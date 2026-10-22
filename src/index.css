@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', 'Noto Sans Telugu', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Fraunces', 'Noto Serif Telugu', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'Noto Sans Telugu', monospace;
+    --font-telugu-serif: 'Noto Serif Telugu', 'Plus Jakarta Sans', serif;
+    --font-telugu-sans: 'Noto Sans Telugu', 'Plus Jakarta Sans', sans-serif;
+  }
+
+  body, select, option, input, textarea, button {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    background-color: #F7F4EE;
+    color: #1C1917;
+  }
+}
+
+.font-telugu-serif {
+  font-family: var(--font-telugu-serif);
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+.font-telugu-sans {
+  font-family: var(--font-telugu-sans);
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+.font-display-serif {
+  font-family: var(--font-display);
+}
+
+.font-mono-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Broadsheet newspaper print styling */
+.broadsheet-page {
+  background-color: #FAF8F3;
+  color: #111111;
+  box-shadow: 0 4px 24px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(28, 25, 23, 0.14);
+}
+
+.broadsheet-column-rule {
+  border-right: 1px solid #D6D1C7;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .broadsheet-page {
+    box-shadow: none !important;
+    margin: 0 !important;
+    page-break-after: always;
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Praja Vani — AI Telugu Newspaper Publishing System",
+  "description": "End-to-end AI-powered Telugu newspaper publishing system orchestrating Gemma 4 31B IT for editorial classification and Gemini 3.5 Flash-Lite for Telugu story preparation, multi-column broadsheet layout composition, and print-ready PDF generation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
