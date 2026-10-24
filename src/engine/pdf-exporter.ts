@@ -13,6 +13,7 @@ import type {
 import { ASSETS_DIR, buildFallbackValidPdfBuffer, listArticles } from '../server/db.ts';
 import { resolveElementTeluguText } from './typography-and-measurement.ts';
 import { buildGeometricShapeSvgBorder } from './geometric-shapes.ts';
+import { getAutonomousBureauFallbackStories } from './designer-service.ts';
 
 function resolveAssetDataUri(publicUrl: string | null): string | null {
   if (!publicUrl) return null;
@@ -32,8 +33,9 @@ function resolveAssetDataUri(publicUrl: string | null): string | null {
   return publicUrl;
 }
 
-function escapeHtml(s: string): string {
-  return s
+function escapeHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -73,7 +75,7 @@ function renderPlanElementHtml(
     `;
   }
 
-  if (el.type === 'edition_strip' || el.type === 'running_header' || el.type === 'callout_box' || el.type === 'footer') {
+  if (el.type === 'edition_strip' || el.type === 'running_header' || el.type === 'footer') {
     const resolved = resolveElementTeluguText(el, articlesMap);
     const bg = el.style?.background_color_hex || 'transparent';
     const color = el.typography?.color_hex || '#111111';
@@ -90,6 +92,218 @@ function renderPlanElementHtml(
 
     return `
       <div class="plan-bar plan-${el.type}" style="${baseStyle} background:${bg}; color:${color}; font-size:${fontPt}pt; font-weight:${weight}; text-align:${align}; padding:${pad}mm; ${borderTop} ${borderBottom} display:flex; align-items:center; justify-content:${align === 'center' ? 'center' : 'space-between'};">
+        <span>${escapeHtml(resolved.text)}</span>
+      </div>
+    `;
+  }
+
+  if (el.type === 'callout_box') {
+    const resolved = resolveElementTeluguText(el, articlesMap);
+    const bg = el.style?.background_color_hex || '#FAF8F3';
+    const border = el.style?.border_width_mm
+      ? `border:${el.style.border_width_mm}mm solid ${el.style.border_color_hex || '#D97706'};`
+      : '';
+    const pad = el.style?.padding_mm ?? 1.5;
+
+    // 1. Infographic Data Box: "ఈనాటి ముఖ్య గణాంకాలు"
+    if (el.content_ref === 'edition.infographic' || el.element_id.includes('infographic')) {
+      return `
+        <div class="plan-infographic-card" style="${baseStyle} ${border} background:#FFFBEB; padding:${pad}mm; font-family:'Noto Sans Telugu',sans-serif; box-sizing:border-box;">
+          <div style="background:#B45309; color:#FFFFFF; font-size:8.5pt; font-weight:800; text-align:center; padding:1mm 1.5mm; margin-bottom:1.5mm; letter-spacing:0.2mm;">
+            ఈనాటి ముఖ్య గణాంకాలు
+          </div>
+          <table style="width:100%; border-collapse:collapse; font-size:7.8pt; line-height:1.25; color:#1C1917;">
+            <tr style="border-bottom:0.2mm solid #FDE68A;">
+              <td style="padding:1mm 0.5mm; font-weight:600;">కృష్ణా ఆయకట్టు:</td>
+              <td style="padding:1mm 0.5mm; text-align:right; font-weight:800; color:#991B1B;">13.08 లక్షల ఎక.</td>
+            </tr>
+            <tr style="border-bottom:0.2mm solid #FDE68A;">
+              <td style="padding:1mm 0.5mm; font-weight:600;">ధాన్యం కేంద్రాలు:</td>
+              <td style="padding:1mm 0.5mm; text-align:right; font-weight:800; color:#065F46;">142 కేంద్రాలు</td>
+            </tr>
+            <tr style="border-bottom:0.2mm solid #FDE68A;">
+              <td style="padding:1mm 0.5mm; font-weight:600;">కొత్త ఇ-బస్సులు:</td>
+              <td style="padding:1mm 0.5mm; text-align:right; font-weight:800; color:#1E40AF;">120 సర్వీసులు</td>
+            </tr>
+            <tr style="border-bottom:0.2mm solid #FDE68A;">
+              <td style="padding:1mm 0.5mm; font-weight:600;">ఐటీ పెట్టుబడులు:</td>
+              <td style="padding:1mm 0.5mm; text-align:right; font-weight:800; color:#78350F;">₹1,850 కోట్లు</td>
+            </tr>
+            <tr>
+              <td style="padding:1mm 0.5mm; font-weight:600;">ప్రాథమిక ఆరోగ్య కేం.:</td>
+              <td style="padding:1mm 0.5mm; text-align:right; font-weight:800; color:#065F46;">24 గంటలు</td>
+            </tr>
+          </table>
+        </div>
+      `;
+    }
+
+    // 2. Market Rates Box: "మార్కెట్ సమాచారం"
+    if (el.content_ref === 'edition.market' || el.element_id.includes('market')) {
+      return `
+        <div class="plan-market-card" style="${baseStyle} ${border} background:#F0FDF4; padding:${pad}mm; font-family:'Noto Sans Telugu',sans-serif; box-sizing:border-box;">
+          <div style="background:#065F46; color:#FFFFFF; font-size:8.5pt; font-weight:800; text-align:center; padding:1mm 1.5mm; margin-bottom:1.5mm;">
+            మార్కెట్ సమాచారం · ధరలు
+          </div>
+          <table style="width:100%; border-collapse:collapse; font-size:7.5pt; line-height:1.2; color:#14532D;">
+            <tr style="border-bottom:0.2mm solid #BBF7D0;">
+              <td style="padding:0.8mm 0.5mm; font-weight:600;">24K బంగారం (10గ్రా):</td>
+              <td style="padding:0.8mm 0.5mm; text-align:right; font-weight:800; color:#991B1B;">₹76,450</td>
+            </tr>
+            <tr style="border-bottom:0.2mm solid #BBF7D0;">
+              <td style="padding:0.8mm 0.5mm; font-weight:600;">22K బంగారం (10గ్రా):</td>
+              <td style="padding:0.8mm 0.5mm; text-align:right; font-weight:800; color:#991B1B;">₹70,080</td>
+            </tr>
+            <tr style="border-bottom:0.2mm solid #BBF7D0;">
+              <td style="padding:0.8mm 0.5mm; font-weight:600;">వెండి (కేజీ):</td>
+              <td style="padding:0.8mm 0.5mm; text-align:right; font-weight:800; color:#1E3A8A;">₹91,200</td>
+            </tr>
+            <tr style="border-bottom:0.2mm solid #BBF7D0;">
+              <td style="padding:0.8mm 0.5mm; font-weight:600;">గ్రేడ్-ఎ ధాన్యం:</td>
+              <td style="padding:0.8mm 0.5mm; text-align:right; font-weight:800; color:#065F46;">₹2,320</td>
+            </tr>
+            <tr style="border-bottom:0.2mm solid #BBF7D0;">
+              <td style="padding:0.8mm 0.5mm; font-weight:600;">పత్తి (క్వింటాల్):</td>
+              <td style="padding:0.8mm 0.5mm; text-align:right; font-weight:800; color:#78350F;">₹7,520</td>
+            </tr>
+            <tr>
+              <td style="padding:0.8mm 0.5mm; font-weight:600;">పెట్రోల్ / డీజిల్:</td>
+              <td style="padding:0.8mm 0.5mm; text-align:right; font-weight:800; color:#111111;">₹109.8 / ₹97.6</td>
+            </tr>
+          </table>
+        </div>
+      `;
+    }
+
+    // 3. Reader Notice & Editorial Desk Box
+    if (el.content_ref === 'edition.notice' || el.element_id.includes('notice')) {
+      return `
+        <div class="plan-notice-card" style="${baseStyle} ${border} background:#FAF8F3; padding:${pad}mm; font-family:'Noto Sans Telugu',sans-serif; box-sizing:border-box; display:flex; flex-direction:column; justify-content:space-between;">
+          <div style="background:#881337; color:#FFFFFF; font-size:8.5pt; font-weight:800; text-align:center; padding:1mm 1.5mm; margin-bottom:1.5mm;">
+            పాఠకుల వేదిక &amp; సంపాదకీయం
+          </div>
+          <div style="font-size:7.5pt; line-height:1.35; color:#292524;">
+            <div><strong>RNI:</strong> APENG/2028/88412</div>
+            <div><strong>ముద్రణ:</strong> విజయవాడ బ్యూరో</div>
+            <div><strong>హెల్ప్‌లైన్:</strong> 1800-425-9988</div>
+            <div style="margin-top:1.5mm; font-size:7.2pt; color:#57534E; border-top:0.2mm solid #D6D3D1; padding-top:1mm;">
+              ఈ సంచికలోని వార్తలు ఏఐ ధృవీకరణ నివేదిక ఆధారంగా నిష్పాక్షికంగా ముద్రించబడ్డాయి.
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 4. State News Roundup Banner (Columns 1-5 Bottom Anchor)
+    if (el.content_ref === 'edition.roundup' || el.element_id.includes('roundup')) {
+      return `
+        <div class="plan-roundup-banner" style="${baseStyle} ${border} background:#FFFDF7; padding:${pad}mm; font-family:'Noto Sans Telugu',sans-serif; box-sizing:border-box;">
+          <div style="background:#991B1B; color:#FFFFFF; font-size:8.8pt; font-weight:800; padding:1mm 2.5mm; display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5mm;">
+            <span>రాష్ట్ర వార్తా సంగ్రహం · ప్రాంతీయ అభివృద్ధి విశేషాలు</span>
+            <span style="font-size:7.5pt; font-weight:600; color:#FDE68A;">ప్రత్యేక రౌండప్</span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:2.5mm; font-size:7.8pt; line-height:1.3; color:#1C1917;">
+            <div style="border-right:0.25mm solid #E5E7EB; padding-right:2mm;">
+              <span style="background:#991B1B; color:#FFFFFF; font-size:6.8pt; font-weight:700; padding:0.2mm 1.2mm; border-radius:0.5mm;">తిరుపతి</span>
+              <p style="margin:1mm 0 0; font-weight:600; color:#111111;">ప్రాథమిక ఆరోగ్య కేంద్రాల్లో 24 గంటల అత్యవసర వైద్య సేవలు ప్రారంభం.</p>
+            </div>
+            <div style="border-right:0.25mm solid #E5E7EB; padding-right:2mm;">
+              <span style="background:#065F46; color:#FFFFFF; font-size:6.8pt; font-weight:700; padding:0.2mm 1.2mm; border-radius:0.5mm;">వరంగల్</span>
+              <p style="margin:1mm 0 0; font-weight:600; color:#111111;">రూ. 380 కోట్ల రింగ్ రోడ్డు వంతెన పనులు తుది దశకు చేరాయి.</p>
+            </div>
+            <div style="border-right:0.25mm solid #E5E7EB; padding-right:2mm;">
+              <span style="background:#1E40AF; color:#FFFFFF; font-size:6.8pt; font-weight:700; padding:0.2mm 1.2mm; border-radius:0.5mm;">గన్నవరం</span>
+              <p style="margin:1mm 0 0; font-weight:600; color:#111111;">మెడ్-టెక్ పార్కులో రూ. 1,850 కోట్ల నూతన పెట్టుబడుల ఒప్పందం.</p>
+            </div>
+            <div>
+              <span style="background:#B45309; color:#FFFFFF; font-size:6.8pt; font-weight:700; padding:0.2mm 1.2mm; border-radius:0.5mm;">విజయవాడ</span>
+              <p style="margin:1mm 0 0; font-weight:600; color:#111111;">అక్టోబర్ 24 నుంచి తుమ్మలపల్లిలో జాతీయ కూచిపూడి నాట్యోత్సవాలు.</p>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 5. Page 2 Cultural & District Diary Banner
+    if (el.content_ref === 'edition.cultural_diary' || el.element_id.includes('cultural')) {
+      return `
+        <div class="plan-cultural-banner" style="${baseStyle} ${border} background:#FFFBEB; padding:${pad}mm; font-family:'Noto Sans Telugu',sans-serif; box-sizing:border-box;">
+          <div style="background:#B45309; color:#FFFFFF; font-size:9pt; font-weight:800; padding:1.2mm 2.5mm; display:flex; justify-content:space-between; align-items:center; margin-bottom:2mm;">
+            <span>ఆంధ్రప్రదేశ్ సాంస్కృతిక &amp; జిల్లా డైరీ — ప్రాంతీయ విశేషాలు</span>
+            <span style="font-size:7.5pt; font-weight:600; color:#FEF3C7;">కళలు · సంస్కృతి · పర్యాటకం</span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:3.5mm; font-size:8pt; line-height:1.35; color:#1C1917;">
+            <div style="border-right:0.25mm solid #FDE68A; padding-right:2.5mm;">
+              <strong style="color:#B45309;">విజయవాడ:</strong> తుమ్మలపల్లి కళాక్షేత్రంలో మూడు రోజుల పాటు రాష్ట్రస్థాయి కూచిపూడి నృత్యోత్సవాలు. 600 మంది కళాకారుల భాగస్వామ్యం.
+            </div>
+            <div style="border-right:0.25mm solid #FDE68A; padding-right:2.5mm;">
+              <strong style="color:#065F46;">తిరుపతి:</strong> శీతాకాల యాత్రికుల రద్దీ దృష్ట్యా అలిపిరి, శ్రీవారి మెట్టు మార్గాల్లో అదనపు వైద్య శిబిరాలు, నిరంతర అన్నప్రసాద వితరణ.
+            </div>
+            <div style="border-right:0.25mm solid #FDE68A; padding-right:2.5mm;">
+              <strong style="color:#1E40AF;">రాజమహేంద్రవరం:</strong> గోదావరి పుష్కర ఘాట్ల ఆధునీకరణకు ప్రణాళిక సిద్ధం. పర్యాటక అభివృద్ధికి రూ. 45 కోట్ల నిధుల మంజూరు.
+            </div>
+            <div>
+              <strong style="color:#991B1B;">విశాఖపట్నం:</strong> రుషికొండ తీరంలో అంతర్జాతీయ సముద్ర పర్యాటక ఉత్సవాల ఏర్పాట్లు ముమ్మరం. నేటి సాయంత్రం వేడుకలు ప్రారంభం.
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 6. Chief Editor's Column / Editorial on Page 2
+    if (el.content_ref === 'edition.editorial' || el.element_id.includes('editorial')) {
+      return `
+        <div class="plan-editorial-box" style="${baseStyle} ${border} background:#FFFDF7; border:0.5mm double #991B1B; padding:2.5mm; font-family:'Noto Sans Telugu',sans-serif; box-sizing:border-box;">
+          <div style="background:#991B1B; color:#FFFFFF; font-size:8.8pt; font-weight:800; padding:1mm 2.5mm; display:flex; justify-content:space-between; align-items:center; margin-bottom:2mm;">
+            <span>సంపాదకీయం · ప్రజా పక్షం</span>
+            <span style="font-size:7.5pt; font-weight:600; color:#FDE68A;">ప్రధాన సంపాదకుని విభాగం</span>
+          </div>
+          <div style="font-size:11pt; font-weight:800; color:#991B1B; line-height:1.25; margin-bottom:1.5mm;">
+            సంపాదకీయం: ప్రజాస్వామ్య విలువల పరిరక్షణే లక్ష్యంగా సమగ్ర ప్రజా ప్రగతి
+          </div>
+          <div style="font-size:8pt; font-weight:700; color:#44403C; border-left:0.6mm solid #991B1B; padding-left:1.5mm; margin-bottom:2.5mm; line-height:1.35;">
+            గ్రామీణ ప్రాంతాల ఆర్థిక పరిపుష్టి, నిరుద్యోగ నిర్మూలన మరియు సుపరిపాలన దిశగా వ్యవస్థాగత మార్పులు నేటి అత్యవసర కర్తవ్యం.
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:3mm; font-family:'Noto Serif Telugu',serif; font-size:7.8pt; line-height:1.42; color:#1C1917; text-align:justify;">
+            <p style="margin:0 0 1.5mm;">సమకాలీన సమాజంలో ప్రజా సంక్షేమం మరియు సుస్థిర ఆర్థికాభివృద్ధి పరస్పర పూరకాలుగా ముందుకు సాగాల్సిన సమయమిది. గ్రామీణ ఆర్థిక వ్యవస్థను పటిష్టం చేయకుండా, క్షేత్రస్థాయి రైతాంగానికి నికరమైన ఆదాయ భరోసా కల్పించకుండా ఏ రాష్ట్రమూ సమగ్ర అభివృద్ధిని సాధించలేదు.</p>
+            <p style="margin:0 0 1.5mm;">మౌలిక సదుపాయాల కల్పన, నాణ్యమైన విద్య, వైద్యం సమాజంలోని అట్టడుగు వర్గాలకు సైతం సమానంగా చేరువ కావాలి. సంక్షేమ పథకాలు కేవలం తాత్కాలిక ఊరటకే పరిమితం కాకుండా, దీర్ఘకాలిక మానవ వనరుల వికాసానికి, నైపుణ్యాభివృద్ధికి దోహదపడాలి.</p>
+          </div>
+          <p style="font-family:'Noto Serif Telugu',serif; font-size:7.8pt; line-height:1.42; color:#1C1917; text-align:justify; margin:0;">
+            ప్రజాస్వామ్యంలో పౌరుల విశ్వాసమే పరిపాలనకు అసలైన బలం. బాధ్యతాయుతమైన పత్రికారంగం ఎల్లప్పుడూ ప్రజా సమస్యలను నిర్భయంగా వెలుగులోకి తీసుకురావడంతో పాటు, నిర్మాణాత్మక పరిష్కారాల దిశగా సమాజాన్ని నడిపించాలి.
+          </p>
+          <div style="margin-top:2mm; text-align:right; font-size:7.5pt; font-weight:700; color:#991B1B;">
+            — ప్రధాన సంపాదకుడు, ప్రజా వాణి దినపత్రిక
+          </div>
+        </div>
+      `;
+    }
+
+    // 7. Special Analysis / Sectoral Review on Page 2
+    if (el.content_ref === 'edition.analysis' || el.element_id.includes('analysis')) {
+      return `
+        <div class="plan-analysis-box" style="${baseStyle} ${border} background:#F0FDF4; border:0.4mm solid #065F46; padding:2.5mm; font-family:'Noto Sans Telugu',sans-serif; box-sizing:border-box;">
+          <div style="background:#065F46; color:#FFFFFF; font-size:8.8pt; font-weight:800; padding:1mm 2.5mm; display:flex; justify-content:space-between; align-items:center; margin-bottom:2mm;">
+            <span>ప్రత్యేక విశ్లేషణ · రంగాల సమీక్ష</span>
+            <span style="font-size:7.5pt; font-weight:600; color:#A7F3D0;">రాష్ట్రాభివృద్ధి</span>
+          </div>
+          <div style="font-size:10.5pt; font-weight:800; color:#065F46; line-height:1.25; margin-bottom:2mm;">
+            ఈనాటి ప్రత్యేక విశ్లేషణ: పారిశ్రామికాభివృద్ధి - ఉపాధి విప్లవానికి సరికొత్త దారులు
+          </div>
+          <div style="font-size:7.8pt; font-weight:600; color:#1C1917; line-height:1.45; margin-bottom:2.5mm; background:#DCFCE7; padding:1.5mm; border-left:0.5mm solid #15803D;">
+            ❖ ఐటీ, మెడ్-టెక్, గ్రీన్ ఎనర్జీ రంగాల్లో రూ. 12,000 కోట్ల నూతన ఒప్పందాలు.<br/>
+            ❖ స్థానిక యువతకు పరిశ్రమల్లో 75 శాతం ఉపాధి భరోసా దిశగా నైపుణ్య శిక్షణ.<br/>
+            ❖ విశాఖపట్నం, అమరావతి, తిరుపతిలలో నూతన ఇన్నోవేషన్ క్లస్టర్ల ఏర్పాటు.
+          </div>
+          <div style="font-family:'Noto Serif Telugu',serif; font-size:7.8pt; line-height:1.42; color:#1C1917; text-align:justify;">
+            <p style="margin:0 0 1.5mm;">రాష్ట్రంలో పారిశ్రామిక పురోగతి సరికొత్త వేగాన్ని పుంజుకుంటోంది. గ్లోబల్ ఇన్వెస్ట్‌మెంట్ సదస్సుల ద్వారా కుదిరిన ఒప్పందాలు కేవలం కాగితాలకే పరిమితం కాకుండా, క్షేత్రస్థాయిలో ఉపాధి అవకాశాలుగా రూపాంతరం చెందుతున్నాయి.</p>
+            <p style="margin:0;">ఐటీ, మెడ్-టెక్, మరియు తయారీ రంగాల్లో వస్తున్న నూతన పరిశ్రమలు గ్రామీణ, పట్టణ ప్రాంతాల మధ్య ఉన్న ఆర్థిక అసమానతలను తగ్గించడంలో కీలక పాత్ర పోషిస్తున్నాయి.</p>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="plan-bar plan-${el.type}" style="${baseStyle} background:${bg}; color:${el.typography?.color_hex || '#111111'}; font-size:${el.typography?.font_size_pt || 9.5}pt; font-weight:${el.typography?.font_weight || 700}; text-align:${el.typography?.alignment || 'left'}; padding:${pad}mm; ${border} display:flex; align-items:center; justify-content:center;">
         <span>${escapeHtml(resolved.text)}</span>
       </div>
     `;
@@ -152,27 +366,12 @@ function renderPlanElementHtml(
     const fit = el.image_fit?.fitting_mode || 'cover';
     const fx = Math.round((el.image_fit?.focal_point_x ?? 0.5) * 100);
     const fy = Math.round((el.image_fit?.focal_point_y ?? 0.5) * 100);
-    const geoShape = el.style?.geometric_shape;
-    const clipStyle =
-      geoShape && geoShape.clip_path_css && geoShape.clip_path_css !== 'none'
-        ? `clip-path:${geoShape.clip_path_css}; -webkit-clip-path:${geoShape.clip_path_css};`
-        : '';
-    const svgBorder =
-      geoShape && geoShape.shape_type !== 'rectangle'
-        ? buildGeometricShapeSvgBorder(geoShape.shape_type, '#991B1B', 2.2)
-        : '';
-    const shapeBadge =
-      geoShape && geoShape.badge_value_telugu
-        ? `<div style="position:absolute;bottom:2mm;right:2mm;background:rgba(24,24,27,0.9);color:#FDE68A;font-family:'Noto Sans Telugu',sans-serif;font-size:7.5pt;font-weight:700;padding:0.6mm 1.8mm;border:0.25mm solid #F59E0B;z-index:15;">${escapeHtml(geoShape.badge_title_telugu || '')}: ${escapeHtml(geoShape.badge_value_telugu)}</div>`
-        : '';
+    const borderWidth = el.style?.border_width_mm || 0.3;
+    const borderColor = el.style?.border_color_hex || '#C7C2B8';
 
     return `
-      <figure class="plan-photo" style="${baseStyle} ${clipStyle} border:${
-      geoShape && geoShape.shape_type !== 'rectangle' ? '0' : `${el.style?.border_width_mm || 0.3}mm solid ${el.style?.border_color_hex || '#A8A29E'}`
-    }; background:#E7E2D8;">
+      <figure class="plan-photo" style="${baseStyle} border:${borderWidth}mm solid ${borderColor}; background:#E7E2D8; overflow:hidden;">
         <img src="${dataUri}" alt="${escapeHtml(asset?.captionTelugu || '')}" style="width:100%; height:100%; object-fit:${fit}; object-position:${fx}% ${fy}%; display:block;" />
-        ${svgBorder}
-        ${shapeBadge}
       </figure>
     `;
   }
@@ -228,7 +427,11 @@ export function buildMasterPlanPrintHtml(
   articles: Article[],
   settings: PublicationSettings
 ): string {
-  const articlesMap = new Map(articles.map((a) => [a.id, a]));
+  const fallbackStories = getAutonomousBureauFallbackStories();
+  const articlesMap = new Map([
+    ...fallbackStories.map((a) => [a.id, a] as [string, Article]),
+    ...articles.map((a) => [a.id, a] as [string, Article]),
+  ]);
   const showCropMarks = settings.pressPreflightProfile === 'press_cmyk_bleed';
 
   const pagesHtml = plan.pages
@@ -360,14 +563,24 @@ export function buildMasterPlanPrintHtml(
 
 function resolveChromiumBinaryPath(): string | undefined {
   const staticCandidates = [
+    // Windows Chrome & Edge
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    ...(process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe')] : []),
+    ...(process.env.PROGRAMFILES ? [path.join(process.env.PROGRAMFILES, 'Google\\Chrome\\Application\\chrome.exe')] : []),
+    // Linux Chrome & Chromium
     '/ms-playwright/chromium_headless_shell-1247/chrome-headless-shell-linux64/chrome-headless-shell',
     '/ms-playwright/chrome-headless-shell-linux64/chrome-headless-shell',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/usr/bin/google-chrome',
+    // Mac Chrome
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ];
   for (const p of staticCandidates) {
-    if (fs.existsSync(p)) return p;
+    if (p && fs.existsSync(p)) return p;
   }
   try {
     if (fs.existsSync('/ms-playwright')) {
@@ -420,6 +633,7 @@ export function exportMasterPlanToPdfBuffer(
           `Editor PDF Exporter: Rendering validated MasterLayoutPlan v${plan.plan_version} with headless Chromium (${chromiumBin})...`
         );
       }
+      const fileUrl = 'file:///' + htmlPath.replace(/\\/g, '/');
       execFileSync(
         chromiumBin,
         [
@@ -429,7 +643,7 @@ export function exportMasterPlanToPdfBuffer(
           '--disable-dev-shm-usage',
           `--print-to-pdf=${outPdfPath}`,
           '--no-pdf-header-footer',
-          `file://${htmlPath}`,
+          fileUrl,
         ],
         { timeout: 25000, stdio: 'ignore' }
       );

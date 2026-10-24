@@ -1,17 +1,18 @@
 import React, { useRef, useState } from 'react';
 import {
+  AlertTriangle,
+  ArrowRight,
+  Bot,
   CheckCircle2,
   Download,
   FileCheck2,
   Printer,
+  RefreshCw,
   Sparkles,
   X,
-  AlertTriangle,
-  Bot,
-  ArrowRight,
-  RefreshCw,
 } from 'lucide-react';
 import type { AgenticPdfLoopReport, NewspaperEdition } from '../shared/types.ts';
+import { useToast } from './ToastNotification.tsx';
 
 export interface PdfDownloadPayload {
   editionId: string;
@@ -61,7 +62,7 @@ export async function fetchAndTriggerCookieSafePdfDownload(
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const blobUrl = URL.createObjectURL(blob);
 
-  // Trigger in-context blob download (bypasses external mobile DownloadManager cookie check)
+  // Trigger in-context blob download
   const link = document.createElement('a');
   link.href = blobUrl;
   link.download = data.filename || `PrajaVani-${editionId}.pdf`;
@@ -145,6 +146,7 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
   onReverifyAgentLoop,
   isReverifying = false,
 }) => {
+  const { addToast } = useToast();
   const printIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [downloadedAgain, setDownloadedAgain] = useState(false);
 
@@ -159,6 +161,11 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
     link.click();
     document.body.removeChild(link);
     setDownloadedAgain(true);
+    addToast({
+      type: 'success',
+      title: 'PDF Saved',
+      message: `Downloaded ${payload.filename} to local device.`,
+    });
     setTimeout(() => setDownloadedAgain(false), 2500);
   };
 
@@ -178,33 +185,33 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
       role="dialog"
       aria-modal="true"
       aria-label="Print-Ready PDF Export and Verification Studio"
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="bg-[#FAF8F3] border-2 border-stone-900 max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
+        className="bg-slate-900 border border-slate-700 max-w-5xl w-full max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Bar */}
-        <div className="bg-[#18181B] text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#B91C1C]">
+        <div className="bg-slate-950 text-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
             <FileCheck2 className="w-5 h-5 text-emerald-400 shrink-0" />
             <div>
               <div className="text-sm font-bold flex flex-wrap items-center gap-2">
-                <span>ప్రజా వాణి Agentic PDF Release Gatekeeper Studio</span>
+                <span>ప్రజా వాణి Agentic PDF Release Studio</span>
                 {payload && (
-                  <span className="px-2 py-0.5 bg-emerald-700 text-white font-mono-tabular text-[11px] font-semibold">
-                    %PDF-1.4 VERIFIED · {(payload.sizeBytes / 1024).toFixed(1)} KB
+                  <span className="px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono-tabular text-[11px] font-bold rounded-md">
+                    %PDF-1.4 · {(payload.sizeBytes / 1024).toFixed(1)} KB
                   </span>
                 )}
                 {agentReport?.ready_for_user && (
-                  <span className="px-2 py-0.5 bg-amber-400 text-stone-950 font-mono-tabular text-[11px] font-extrabold">
-                    READY FOR USER (SLIDE APPROVED · {agentReport.final_quality_score}/100)
+                  <span className="px-2 py-0.5 bg-amber-400 text-slate-950 font-mono-tabular text-[11px] font-extrabold rounded-md shadow-sm">
+                    READY FOR USER ({agentReport.final_quality_score}/100)
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-stone-300">
-                Multi-Agent Pipeline: PDF → gemini-3.1-flash-lite (Visual Gatekeeper) ⇄ gemini-3.5-flash-lite (Autonomous Layout Architect)
+              <p className="text-[11px] text-slate-400">
+                దినపత్రిక ముద్రణా నాణ్యత పరిశీలన (Print Quality Inspection)
               </p>
             </div>
           </div>
@@ -215,10 +222,10 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
                 type="button"
                 disabled={isReverifying}
                 onClick={onReverifyAgentLoop}
-                className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 border border-stone-600 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isReverifying ? 'animate-spin' : ''}`} />
-                {isReverifying ? 'Agents Inspecting...' : 'Re-Run 3.1 → 3.5 Agent Loop'}
+                {isReverifying ? 'తనిఖీ జరుగుతోంది...' : 'నాణ్యత పునఃపరిశీలన (Re-verify)'}
               </button>
             )}
             {payload && (
@@ -226,18 +233,18 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
                 <button
                   type="button"
                   onClick={handleSaveBlobAgain}
-                  className="px-3.5 py-1.5 bg-[#991B1B] hover:bg-[#7F1D1D] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-bold rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  {downloadedAgain ? 'Saved PDF to Device!' : `Save ${payload.filename}`}
+                  <Download className="w-3.5 h-3.5 fill-current" />
+                  {downloadedAgain ? 'Saved to Device!' : `Download PDF`}
                 </button>
                 <button
                   type="button"
                   onClick={handleSystemPrint}
-                  className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  Print / Save via System PDF Dialog
+                  <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                  System Print
                 </button>
               </>
             )}
@@ -245,7 +252,7 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
               type="button"
               onClick={onClose}
               aria-label="Close PDF Studio"
-              className="p-1.5 text-stone-300 hover:text-white cursor-pointer"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -253,8 +260,8 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
         </div>
 
         {error ? (
-          <div className="p-6 bg-red-50 text-red-900 flex items-center gap-3">
-            <AlertTriangle className="w-6 h-6 text-red-700 shrink-0" />
+          <div className="p-6 bg-rose-950/80 text-rose-200 flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0" />
             <div className="text-sm">
               <div className="font-bold">PDF Export Warning</div>
               <div>{error}</div>
@@ -263,35 +270,34 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
         ) : (
           payload && (
             <div className="p-4 space-y-3 overflow-y-auto flex-1">
-              <div className="bg-emerald-50 border border-emerald-300 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-950">
+              <div className="bg-emerald-950/40 border border-emerald-500/40 px-4 py-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-200 shadow-sm">
                 <div className="flex items-center gap-2 font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>
-                    Verified &amp; Ready for User: <strong>{payload.filename}</strong> ({payload.pageCount} pages,{' '}
+                    Verified &amp; Ready for User: <strong className="text-white">{payload.filename}</strong> ({payload.pageCount} pages,{' '}
                     {(payload.sizeBytes / 1024).toFixed(1)} KB).
                   </span>
                 </div>
-                <span className="font-telugu-sans font-bold text-emerald-800 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" /> వృత్తం, గోపుర ఆర్చ్, పంచభుజి, నక్షత్ర ఆకృతులతో ముద్రణకు సిద్ధం
+                <span className="font-telugu-sans font-bold text-emerald-300 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> వృత్తం, గోపుర ఆర్చ్, పంచభుజి, నక్షత్ర ఆకృతులతో ముద్రణకు సిద్ధం
                 </span>
               </div>
 
               {/* Multi-Agent PDF Inspection & Architectural Rewrite Trace */}
               {agentReport && (
-                <div className="bg-white border-2 border-stone-900 p-3.5 space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-2">
-                    <div className="flex items-center gap-2 text-xs font-extrabold text-stone-900 uppercase tracking-wider">
-                      <Bot className="w-4 h-4 text-[#991B1B]" />
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-wider">
+                      <Bot className="w-4 h-4 text-cyan-400" />
                       <span>
-                        Agentic PDF Loop Trace: {agentReport.inspector_model_id} (Gatekeeper) &lt;-&gt;{' '}
-                        {agentReport.architect_model_id} (Architect)
+                        Agentic PDF Loop Trace: {agentReport.inspector_model_id} ⇄ {agentReport.architect_model_id}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 font-mono-tabular text-[11px]">
-                      <span className="px-2 py-0.5 bg-stone-100 border border-stone-300 text-stone-800 font-semibold">
+                      <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 text-slate-300 rounded font-semibold">
                         Rounds: {agentReport.total_agent_rounds}
                       </span>
-                      <span className="px-2 py-0.5 bg-emerald-800 text-white font-bold">
+                      <span className="px-2 py-0.5 bg-emerald-900 border border-emerald-700 text-emerald-300 rounded font-bold">
                         Verdict: {agentReport.final_verdict} ({agentReport.final_quality_score}/100)
                       </span>
                     </div>
@@ -301,14 +307,14 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
                     {agentReport.rounds.map((r) => (
                       <div
                         key={r.round_number}
-                        className={`p-2.5 border text-xs space-y-1.5 ${
+                        className={`p-3 rounded-xl border text-xs space-y-1.5 ${
                           r.inspection_3_1.approved_to_slide
-                            ? 'bg-emerald-50/60 border-emerald-400'
-                            : 'bg-amber-50/70 border-amber-400'
+                            ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                            : 'bg-amber-950/30 border-amber-500/40 text-amber-200'
                         }`}
                       >
                         <div className="flex items-center justify-between font-mono-tabular font-bold text-[11px]">
-                          <span className="text-stone-900">
+                          <span className="text-white">
                             ROUND {r.round_number} · Plan v{r.plan_version} PDF (
                             {r.pdf_size_bytes >= 1024
                               ? `${(r.pdf_size_bytes / 1024).toFixed(0)} KB`
@@ -316,31 +322,31 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
                             )
                           </span>
                           <span
-                            className={`px-1.5 py-0.5 ${
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                               r.inspection_3_1.approved_to_slide
-                                ? 'bg-emerald-700 text-white'
-                                : 'bg-amber-700 text-white'
+                                ? 'bg-emerald-900 text-emerald-300 border border-emerald-700'
+                                : 'bg-amber-900 text-amber-300 border border-amber-700'
                             }`}
                           >
-                            3.1 Flash-Lite: {r.inspection_3_1.verdict}
+                            3.1: {r.inspection_3_1.verdict}
                           </span>
                         </div>
 
-                        <p className="text-[11px] text-stone-800 leading-snug">
+                        <p className="text-[11px] text-slate-300 leading-snug">
                           <strong>{r.inspection_3_1.inspector_model_id}:</strong>{' '}
                           {r.inspection_3_1.inspector_summary}
                         </p>
 
                         {r.rewrite_3_5 && (
-                          <div className="mt-1.5 pt-1.5 border-t border-amber-300/80 space-y-1 bg-white/80 p-2">
-                            <div className="flex items-center gap-1 font-mono-tabular font-bold text-[10.5px] text-[#991B1B]">
+                          <div className="mt-1.5 pt-1.5 border-t border-slate-800 space-y-1 bg-slate-900/80 p-2 rounded-lg">
+                            <div className="flex items-center gap-1 font-mono-tabular font-bold text-[10.5px] text-amber-400">
                               <ArrowRight className="w-3 h-3" />
                               <span>
-                                {r.rewrite_3_5.architect_model_id} Architectural Rewrite (v
+                                {r.rewrite_3_5.architect_model_id} Rewrite (v
                                 {r.rewrite_3_5.from_plan_version} → v{r.rewrite_3_5.to_plan_version})
                               </span>
                             </div>
-                            <p className="text-[11px] text-stone-700 leading-snug">
+                            <p className="text-[11px] text-slate-300 leading-snug">
                               {r.rewrite_3_5.agent_reasoning}
                             </p>
                           </div>
@@ -351,14 +357,14 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
                 </div>
               )}
 
-              {/* Embedded Print-Ready Preview Frame */}
-              <div className="border-2 border-stone-400 bg-stone-200 p-3">
-                <div className="text-xs font-mono-tabular font-semibold text-stone-700 mb-2 flex items-center justify-between">
+              {/* Embedded Print Preview Frame */}
+              <div className="border border-slate-800 bg-slate-950 rounded-xl p-3 shadow-inner">
+                <div className="text-xs font-mono-tabular font-semibold text-slate-400 mb-2 flex items-center justify-between">
                   <span>
                     LIVE PRINT SHEET PREVIEW ({payload.pageCount} PAGES · 330mm × 520mm BROADSHEET)
                   </span>
-                  <span>
-                    Use &ldquo;Save {payload.filename}&rdquo; or &ldquo;Print / Save via System PDF Dialog&rdquo; above
+                  <span className="text-amber-400">
+                    Use &ldquo;Download PDF&rdquo; to save file
                   </span>
                 </div>
                 {payload.printHtml ? (
@@ -366,13 +372,13 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
                     ref={printIframeRef}
                     title="Print-Ready Telugu Newspaper Preview"
                     srcDoc={payload.printHtml}
-                    className="w-full h-[54vh] bg-white border border-stone-400 shadow-inner"
+                    className="w-full h-[54vh] bg-white rounded-lg border border-slate-800 shadow-md"
                   />
                 ) : (
                   <iframe
                     title="PDF Binary Preview"
                     src={payload.blobUrl}
-                    className="w-full h-[54vh] bg-white border border-stone-400"
+                    className="w-full h-[54vh] bg-white rounded-lg border border-slate-800"
                   />
                 )}
               </div>
@@ -383,4 +389,3 @@ export const PdfExportInspectorModal: React.FC<PdfExportInspectorModalProps> = (
     </div>
   );
 };
-

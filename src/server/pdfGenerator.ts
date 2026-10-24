@@ -441,11 +441,18 @@ export function buildEditionPrintHtml(
 }
 
 const CHROMIUM_CANDIDATE_PATHS = [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ...(process.env.LOCALAPPDATA ? [path.join(process.env.LOCALAPPDATA, 'Google\\Chrome\\Application\\chrome.exe')] : []),
+  ...(process.env.PROGRAMFILES ? [path.join(process.env.PROGRAMFILES, 'Google\\Chrome\\Application\\chrome.exe')] : []),
   '/ms-playwright/chrome-headless-shell-linux64/chrome-headless-shell',
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
   '/usr/bin/google-chrome',
-];
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+].filter(Boolean);
 
 export function generateEditionPdfBuffer(
   edition: NewspaperEdition,
@@ -459,10 +466,11 @@ export function generateEditionPdfBuffer(
 
   try {
     fs.writeFileSync(htmlPath, html, 'utf-8');
-    const chromiumBin = CHROMIUM_CANDIDATE_PATHS.find((p) => fs.existsSync(p));
+    const chromiumBin = CHROMIUM_CANDIDATE_PATHS.find((p) => p && fs.existsSync(p));
 
     if (chromiumBin) {
       if (onLog) onLog(`Rendering print-ready Telugu PDF with headless Chromium (${chromiumBin})...`);
+      const fileUrl = 'file:///' + htmlPath.replace(/\\/g, '/');
       execFileSync(
         chromiumBin,
         [
@@ -472,7 +480,7 @@ export function generateEditionPdfBuffer(
           '--disable-dev-shm-usage',
           `--print-to-pdf=${outPdfPath}`,
           '--no-pdf-header-footer',
-          `file://${htmlPath}`,
+          fileUrl,
         ],
         { timeout: 25000, stdio: 'ignore' }
       );

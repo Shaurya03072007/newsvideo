@@ -160,15 +160,6 @@ export const EditorialPhotoIllustration: React.FC<EditorialPhotoIllustrationProp
         </svg>
       )}
 
-      {/* Top-Left Telugu Telemetry Kicker Overlay */}
-      {badge && (
-        <div
-          className={`absolute top-2 left-2 ${badge.bg} text-amber-200 px-2.5 py-0.5 font-telugu-sans text-[11px] font-bold border border-white/20 shadow-xs`}
-        >
-          {badge.text}
-        </div>
-      )}
-
       {/* Bottom-Right Authentic Telugu Newspaper Bureau Photo Credit Tag */}
       <div className="absolute bottom-1.5 right-1.5 bg-black/80 text-white px-2 py-0.5 font-telugu-sans text-[10px] tracking-wide border border-white/20">
         {locationTelugu} · ప్రజా వాణి ఫోటో

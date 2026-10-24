@@ -1,0 +1,1 @@
+{"nodes": [{"id": "supabase_setup_sql", "label": "Supabase Schema SQL", "file_type": "code", "source_file": "SUPABASE_SETUP.md", "rationale": "Defines 14 production tables and Google OAuth integration.", "_origin": "semantic"}], "edges": [], "hyperedges": []}

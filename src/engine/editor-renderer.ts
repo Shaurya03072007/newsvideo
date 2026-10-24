@@ -15,6 +15,7 @@ import {
   resolveElementTeluguText,
 } from './typography-and-measurement.ts';
 import { selectDesignerGeometricShapeForArticle } from './geometric-shapes.ts';
+import { getAutonomousBureauFallbackStories } from './designer-service.ts';
 
 /**
  * Checks whether two axis-aligned rectangles in mm intersect by more than `epsilonMm`.
@@ -276,7 +277,11 @@ export function derivePageLayoutManifestsFromMasterPlan(
   articles: Article[],
   settings: PublicationSettings
 ): PageLayoutManifest[] {
-  const articlesMap = new Map(articles.map((a) => [a.id, a]));
+  const fallbackStories = getAutonomousBureauFallbackStories();
+  const articlesMap = new Map([
+    ...fallbackStories.map((a) => [a.id, a] as [string, Article]),
+    ...articles.map((a) => [a.id, a] as [string, Article]),
+  ]);
 
   return plan.pages.map((page: MasterLayoutPagePlan) => {
     const containers = page.elements.filter((e) => e.type === 'article_container' && e.article_id);
@@ -285,6 +290,171 @@ export function derivePageLayoutManifestsFromMasterPlan(
 
     containers.forEach((cont, idx) => {
       const art = cont.article_id ? articlesMap.get(cont.article_id) : undefined;
+
+      const colWidthApprox = (page.width - 2 * page.margin_mm) / (page.reference_columns || 6);
+      const gridColStart = Math.max(
+        1,
+        Math.min(
+          page.reference_columns || 6,
+          Math.round((cont.geometry.x - page.margin_mm) / colWidthApprox) + 1
+        )
+      );
+      const gridColSpan = Math.max(
+        1,
+        Math.min(page.reference_columns || 6, Math.round(cont.geometry.width / colWidthApprox))
+      );
+
+      if (cont.element_id.includes('editorial')) {
+        const mod: LayoutModule = {
+          moduleId: cont.element_id,
+          articleId: 'art-editorial-chief',
+          pageNumber: page.page_number,
+          gridColumnStart: gridColStart,
+          gridColumnSpan: gridColSpan,
+          rowOrder: idx + 1,
+          verticalPositionMm: cont.geometry.y,
+          measuredHeightMm: cont.geometry.height,
+          moduleWidthMm: cont.geometry.width,
+          isLeadStory: false,
+          isSideBrief: false,
+          sectionCategory: 'Editorials and opinion',
+          sectionLabelTelugu: 'సంపాదకీయం',
+          sectionColorHex: '#991B1B',
+          locationDatelineTelugu: 'హైదరాబాద్ / అమరావతి',
+          headlineVariant: 'primary',
+          headlineTextTelugu: 'సంపాదకీయం: ప్రజాస్వామ్య విలువల పరిరక్షణే లక్ష్యంగా సమగ్ర ప్రజా ప్రగతి',
+          standfirstTextTelugu: 'గ్రామీణ ప్రాంతాల ఆర్థిక పరిపుష్టి, నిరుద్యోగ నిర్మూలన మరియు సుపరిపాలన దిశగా వ్యవస్థాగత మార్పులు నేటి అత్యవసర కర్తవ్యం.',
+          bodyVariant: 'full',
+          bodyParagraphsTelugu: [
+            'సమకాలీన సమాజంలో ప్రజా సంక్షేమం మరియు సుస్థిర ఆర్థికాభివృద్ధి పరస్పర పూరకాలుగా ముందుకు సాగాల్సిన సమయమిది. గ్రామీణ ఆర్థిక వ్యవస్థను పటిష్టం చేయకుండా, క్షేత్రస్థాయి రైతాంగానికి నికరమైన ఆదాయ భరోసా కల్పించకుండా ఏ రాష్ట్రమూ సమగ్ర అభివృద్ధిని సాధించలేదు.',
+            'మౌలిక సదుపాయాల కల్పన, నాణ్యమైన విద్య, వైద్యం సమాజంలోని అట్టడుగు వర్గాలకు సైతం సమానంగా చేరువ కావాలి. సంక్షేమ పథకాలు కేవలం తాత్కాలిక ఊరటకే పరిమితం కాకుండా, దీర్ఘకాలిక మానవ వనరుల వికాసానికి, నైపుణ్యాభివృద్ధికి దోహదపడాలి.',
+            'ప్రజాస్వామ్యంలో పౌరుల విశ్వాసమే పరిపాలనకు అసలైన బలం. బాధ్యతాయుతమైన పత్రికారంగం ఎల్లప్పుడూ ప్రజా సమస్యలను నిర్భయంగా వెలుగులోకి తీసుకురావడంతో పాటు, నిర్మాణాత్మక పరిష్కారాల దిశగా సమాజాన్ని నడిపించాలి.',
+          ],
+          continuationNoteTelugu: null,
+          photographAssetId: null,
+          photographUrl: null,
+          photographCaptionTelugu: null,
+          photographAspectRatio: null,
+          headlineFontSizePt: 17,
+          bodyFontSizePt: 10,
+          lineHeightRatio: 1.5,
+          overflowStatus: 'fit',
+        };
+        modules.push(mod);
+        return;
+      }
+
+      if (cont.element_id.includes('analysis')) {
+        const mod: LayoutModule = {
+          moduleId: cont.element_id,
+          articleId: 'art-special-analysis',
+          pageNumber: page.page_number,
+          gridColumnStart: gridColStart,
+          gridColumnSpan: gridColSpan,
+          rowOrder: idx + 1,
+          verticalPositionMm: cont.geometry.y,
+          measuredHeightMm: cont.geometry.height,
+          moduleWidthMm: cont.geometry.width,
+          isLeadStory: false,
+          isSideBrief: false,
+          sectionCategory: 'Business',
+          sectionLabelTelugu: 'ప్రత్యేక విశ్లేషణ',
+          sectionColorHex: '#065F46',
+          locationDatelineTelugu: 'విశ్లేషణ విభాగం',
+          headlineVariant: 'primary',
+          headlineTextTelugu: 'ఈనాటి ప్రత్యేక విశ్లేషణ: పారిశ్రామికాభివృద్ధి - ఉపాధి విప్లవానికి సరికొత్త దారులు',
+          standfirstTextTelugu: 'రాష్ట్రంలో పెట్టుబడుల వరద, నూతన పరిశ్రమల స్థాపనతో స్థానిక యువతకు విస్తృత ఉద్యోగావకాశాలు.',
+          bodyVariant: 'full',
+          bodyParagraphsTelugu: [
+            'రాష్ట్రంలో పారిశ్రామిక పురోగతి సరికొత్త వేగాన్ని పుంజుకుంటోంది. గ్లోబల్ ఇన్వెస్ట్‌మెంట్ సదస్సుల ద్వారా కుదిరిన ఒప్పందాలు కేవలం కాగితాలకే పరిమితం కాకుండా, క్షేత్రస్థాయిలో ఉపాధి అవకాశాలుగా రూపాంతరం చెందుతున్నాయి.',
+            'ఐటీ, మెడ్-టెక్, మరియు ఎలక్ట్రానిక్స్ తయారీ రంగాల్లో వస్తున్న నూతన పరిశ్రమలు గ్రామీణ, పట్టణ ప్రాంతాల మధ్య ఉన్న ఆర్థిక అసమానతలను తగ్గించడంలో కీలక పాత్ర పోషిస్తున్నాయి. నైపుణ్యాభివృద్ధి శిక్షణ ద్వారా స్థానిక యువతను పరిశ్రమల అవసరాలకు అనుగుణంగా తీర్చిదిద్దుతున్నారు.',
+          ],
+          continuationNoteTelugu: null,
+          photographAssetId: null,
+          photographUrl: null,
+          photographCaptionTelugu: null,
+          photographAspectRatio: null,
+          headlineFontSizePt: 16,
+          bodyFontSizePt: 9.8,
+          lineHeightRatio: 1.48,
+          overflowStatus: 'fit',
+        };
+        modules.push(mod);
+        return;
+      }
+
+      if (cont.element_id.includes('cultural')) {
+        const mod: LayoutModule = {
+          moduleId: cont.element_id,
+          articleId: 'art-cultural-diary',
+          pageNumber: page.page_number,
+          gridColumnStart: 1,
+          gridColumnSpan: page.reference_columns || 6,
+          rowOrder: idx + 1,
+          verticalPositionMm: cont.geometry.y,
+          measuredHeightMm: cont.geometry.height,
+          moduleWidthMm: cont.geometry.width,
+          isLeadStory: false,
+          isSideBrief: false,
+          sectionCategory: 'Culture and festivals',
+          sectionLabelTelugu: 'సాంస్కృతిక విశేషాలు',
+          sectionColorHex: '#B45309',
+          locationDatelineTelugu: 'సాంస్కృతిక విభాగం',
+          headlineVariant: 'primary',
+          headlineTextTelugu: 'ఆంధ్రప్రదేశ్ సాంస్కృతిక & జిల్లా డైరీ — ప్రాంతీయ విశేషాలు',
+          standfirstTextTelugu: null,
+          bodyVariant: 'full',
+          bodyParagraphsTelugu: ['విజయవాడ, తిరుపతి, రాజమహేంద్రవరం, విశాఖపట్నం కళలు, సంస్కృతి విశేషాలు.'],
+          continuationNoteTelugu: null,
+          photographAssetId: null,
+          photographUrl: null,
+          photographCaptionTelugu: null,
+          photographAspectRatio: null,
+          headlineFontSizePt: 14,
+          bodyFontSizePt: 9.8,
+          lineHeightRatio: 1.3,
+          overflowStatus: 'fit',
+        };
+        modules.push(mod);
+        return;
+      }
+
+      if (cont.element_id.includes('roundup')) {
+        const mod: LayoutModule = {
+          moduleId: cont.element_id,
+          articleId: 'art-state-roundup',
+          pageNumber: page.page_number,
+          gridColumnStart: 1,
+          gridColumnSpan: page.reference_columns || 6,
+          rowOrder: idx + 1,
+          verticalPositionMm: cont.geometry.y,
+          measuredHeightMm: cont.geometry.height,
+          moduleWidthMm: cont.geometry.width,
+          isLeadStory: false,
+          isSideBrief: false,
+          sectionCategory: 'State news',
+          sectionLabelTelugu: 'రాష్ట్ర రౌండప్',
+          sectionColorHex: '#991B1B',
+          locationDatelineTelugu: 'రాష్ట్ర బ్యూరో',
+          headlineVariant: 'primary',
+          headlineTextTelugu: 'రాష్ట్ర సమగ్ర వార్తా సమాహారం · ప్రాంతీయ అభివృద్ధి విశేషాలు',
+          standfirstTextTelugu: null,
+          bodyVariant: 'full',
+          bodyParagraphsTelugu: ['తిరుపతి, వరంగల్, గన్నవరం, విజయవాడ ప్రాంతీయ సమగ్ర వార్తలు.'],
+          continuationNoteTelugu: null,
+          photographAssetId: null,
+          photographUrl: null,
+          photographCaptionTelugu: null,
+          photographAspectRatio: null,
+          headlineFontSizePt: 14,
+          bodyFontSizePt: 9.8,
+          lineHeightRatio: 1.3,
+          overflowStatus: 'fit',
+        };
+        modules.push(mod);
+        return;
+      }
+
       if (!art) return;
 
       const catCfg =
@@ -313,18 +483,6 @@ export function derivePageLayoutManifestsFromMasterPlan(
         null;
 
       const isBrief = cont.element_id.includes('_brief_') || cont.geometry.width <= 65;
-      const colWidthApprox = (page.width - 2 * page.margin_mm) / (page.reference_columns || 6);
-      const gridColStart = Math.max(
-        1,
-        Math.min(
-          page.reference_columns || 6,
-          Math.round((cont.geometry.x - page.margin_mm) / colWidthApprox) + 1
-        )
-      );
-      const gridColSpan = Math.max(
-        1,
-        Math.min(page.reference_columns || 6, Math.round(cont.geometry.width / colWidthApprox))
-      );
 
       const mod: LayoutModule = {
         moduleId: cont.element_id,

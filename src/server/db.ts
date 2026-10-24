@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import type {
   AIProcessingJob,
   Article,
@@ -29,13 +30,20 @@ import {
 import { computeInitialArticleMeasurementsForDesigner } from '../engine/typography-and-measurement.ts';
 import { buildDeterministicAgenticPdfReportFromHistory } from '../engine/agentic-pdf-loop.ts';
 
-const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
+const STORAGE_ROOT = isServerless
+  ? path.join(os.tmpdir(), 'newsvideo-storage')
+  : path.resolve(process.cwd(), 'storage');
 export const ASSETS_DIR = path.join(STORAGE_ROOT, 'assets');
 export const PDF_DIR = path.join(STORAGE_ROOT, 'pdfs');
 const DB_PATH = path.join(STORAGE_ROOT, 'newspaper.sqlite');
 
-fs.mkdirSync(ASSETS_DIR, { recursive: true });
-fs.mkdirSync(PDF_DIR, { recursive: true });
+try {
+  fs.mkdirSync(ASSETS_DIR, { recursive: true });
+  fs.mkdirSync(PDF_DIR, { recursive: true });
+} catch (e) {
+  console.warn('Storage directory initialization note:', e);
+}
 
 function createDatabaseConnection(): DatabaseSync {
   try {
@@ -304,6 +312,22 @@ export function initDatabase() {
     db.exec('ALTER TABLE newspaper_editions ADD COLUMN agentic_pdf_report_json TEXT;');
   }
 
+  // Ensure Google Auth & User Profile columns exist on users
+  const userCols = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+  const userColNames = new Set(userCols.map((c) => c.name));
+  if (!userColNames.has('email')) {
+    db.exec('ALTER TABLE users ADD COLUMN email TEXT;');
+  }
+  if (!userColNames.has('avatar_url')) {
+    db.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT;');
+  }
+  if (!userColNames.has('google_id')) {
+    db.exec('ALTER TABLE users ADD COLUMN google_id TEXT;');
+  }
+  if (!userColNames.has('updated_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN updated_at TEXT;');
+  }
+
   const settingsRow = db.prepare('SELECT json_config FROM publication_settings WHERE id = 1').get() as
     | { json_config: string }
     | undefined;
@@ -314,8 +338,12 @@ export function initDatabase() {
     );
   }
 
-  seedInitialDataIfEmpty();
-  ensureRichSeedStoriesAndRealPhotos();
+  try {
+    seedInitialDataIfEmpty();
+    ensureRichSeedStoriesAndRealPhotos();
+  } catch (e) {
+    console.warn('Note on initial seeding:', e);
+  }
 }
 
 export function getSettings(): PublicationSettings {
@@ -372,7 +400,358 @@ export function getUsers(): User[] {
     bureau: String(r.bureau),
     active: Boolean(r.active),
     createdAt: String(r.created_at),
+    email: r.email ? String(r.email) : undefined,
+    avatarUrl: r.avatar_url ? String(r.avatar_url) : undefined,
+    googleId: r.google_id ? String(r.google_id) : undefined,
+    updatedAt: r.updated_at ? String(r.updated_at) : undefined,
   }));
+}
+
+export function getUserById(id: string): User | null {
+  const r = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  if (!r) return null;
+  return {
+    id: String(r.id),
+    username: String(r.username),
+    displayName: String(r.display_name),
+    displayNameTelugu: String(r.display_name_telugu),
+    role: r.role as User['role'],
+    district: String(r.district),
+    bureau: String(r.bureau),
+    active: Boolean(r.active),
+    createdAt: String(r.created_at),
+    email: r.email ? String(r.email) : undefined,
+    avatarUrl: r.avatar_url ? String(r.avatar_url) : undefined,
+    googleId: r.google_id ? String(r.google_id) : undefined,
+    updatedAt: r.updated_at ? String(r.updated_at) : undefined,
+  };
+}
+
+export function getUserByEmail(email: string): User | null {
+  const r = db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)').get(email) as Record<string, unknown> | undefined;
+  if (!r) return null;
+  return {
+    id: String(r.id),
+    username: String(r.username),
+    displayName: String(r.display_name),
+    displayNameTelugu: String(r.display_name_telugu),
+    role: r.role as User['role'],
+    district: String(r.district),
+    bureau: String(r.bureau),
+    active: Boolean(r.active),
+    createdAt: String(r.created_at),
+    email: r.email ? String(r.email) : undefined,
+    avatarUrl: r.avatar_url ? String(r.avatar_url) : undefined,
+    googleId: r.google_id ? String(r.google_id) : undefined,
+    updatedAt: r.updated_at ? String(r.updated_at) : undefined,
+  };
+}
+
+export function getUserByGoogleId(googleId: string): User | null {
+  const r = db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId) as Record<string, unknown> | undefined;
+  if (!r) return null;
+  return {
+    id: String(r.id),
+    username: String(r.username),
+    displayName: String(r.display_name),
+    displayNameTelugu: String(r.display_name_telugu),
+    role: r.role as User['role'],
+    district: String(r.district),
+    bureau: String(r.bureau),
+    active: Boolean(r.active),
+    createdAt: String(r.created_at),
+    email: r.email ? String(r.email) : undefined,
+    avatarUrl: r.avatar_url ? String(r.avatar_url) : undefined,
+    googleId: r.google_id ? String(r.google_id) : undefined,
+    updatedAt: r.updated_at ? String(r.updated_at) : undefined,
+  };
+}
+
+export function upsertGoogleUser(payload: {
+  sub?: string;
+  email: string;
+  name: string;
+  picture?: string;
+  displayNameTelugu?: string;
+  role?: User['role'];
+  district?: string;
+  bureau?: string;
+}): User {
+  const existing =
+    (payload.sub ? getUserByGoogleId(payload.sub) : null) ||
+    getUserByEmail(payload.email);
+
+  const now = new Date().toISOString();
+
+  if (existing) {
+    const nextDisplayNameTelugu = payload.displayNameTelugu || existing.displayNameTelugu || `${payload.name} (ప్రతినిధి)`;
+    const nextAvatar = payload.picture || existing.avatarUrl || '';
+    const nextGoogleId = payload.sub || existing.googleId || '';
+    const nextRole = payload.role || existing.role;
+    const nextDistrict = payload.district || existing.district;
+    const nextBureau = payload.bureau || existing.bureau;
+
+    db.prepare(`
+      UPDATE users
+      SET display_name = ?,
+          display_name_telugu = ?,
+          avatar_url = ?,
+          google_id = ?,
+          role = ?,
+          district = ?,
+          bureau = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      payload.name || existing.displayName,
+      nextDisplayNameTelugu,
+      nextAvatar,
+      nextGoogleId,
+      nextRole,
+      nextDistrict,
+      nextBureau,
+      now,
+      existing.id
+    );
+
+    return {
+      ...existing,
+      displayName: payload.name || existing.displayName,
+      displayNameTelugu: nextDisplayNameTelugu,
+      avatarUrl: nextAvatar,
+      googleId: nextGoogleId,
+      role: nextRole,
+      district: nextDistrict,
+      bureau: nextBureau,
+      updatedAt: now,
+    };
+  }
+
+  // Create new user profile for Google user
+  const sanitizedUsername = payload.email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '') || `user-${Date.now()}`;
+  const userId = `usr-g-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const teluguName = payload.displayNameTelugu || `${payload.name} (జర్నలిస్ట్)`;
+  const role = payload.role || 'reporter';
+  const district = payload.district || 'ఎన్టీఆర్ జిల్లా';
+  const bureau = payload.bureau || 'విజయవాడ డిజిటల్ బ్యూరో';
+
+  db.prepare(`
+    INSERT INTO users (
+      id, username, password_hash, display_name, display_name_telugu,
+      role, district, bureau, active, created_at, email, avatar_url, google_id, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+  `).run(
+    userId,
+    sanitizedUsername,
+    '',
+    payload.name,
+    teluguName,
+    role,
+    district,
+    bureau,
+    now,
+    payload.email,
+    payload.picture || '',
+    payload.sub || '',
+    now
+  );
+
+  return {
+    id: userId,
+    username: sanitizedUsername,
+    displayName: payload.name,
+    displayNameTelugu: teluguName,
+    role,
+    district,
+    bureau,
+    active: true,
+    createdAt: now,
+    email: payload.email,
+    avatarUrl: payload.picture,
+    googleId: payload.sub,
+    updatedAt: now,
+  };
+}
+
+export function updateUserProfile(
+  userId: string,
+  updates: {
+    displayName?: string;
+    displayNameTelugu?: string;
+    role?: User['role'];
+    district?: string;
+    bureau?: string;
+    avatarUrl?: string;
+    email?: string;
+  }
+): User | null {
+  const current = getUserById(userId);
+  if (!current) return null;
+
+  const now = new Date().toISOString();
+  const next = {
+    displayName: updates.displayName !== undefined ? updates.displayName : current.displayName,
+    displayNameTelugu: updates.displayNameTelugu !== undefined ? updates.displayNameTelugu : current.displayNameTelugu,
+    role: updates.role !== undefined ? updates.role : current.role,
+    district: updates.district !== undefined ? updates.district : current.district,
+    bureau: updates.bureau !== undefined ? updates.bureau : current.bureau,
+    avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : current.avatarUrl,
+    email: updates.email !== undefined ? updates.email : current.email,
+  };
+
+  db.prepare(`
+    UPDATE users
+    SET display_name = ?,
+        display_name_telugu = ?,
+        role = ?,
+        district = ?,
+        bureau = ?,
+        avatar_url = ?,
+        email = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    next.displayName,
+    next.displayNameTelugu,
+    next.role,
+    next.district,
+    next.bureau,
+    next.avatarUrl || null,
+    next.email || null,
+    now,
+    userId
+  );
+
+  return {
+    ...current,
+    ...next,
+    updatedAt: now,
+  };
+}
+
+export function hasEditor(): boolean {
+  const row = db.prepare("SELECT id FROM users WHERE (role = 'editor' OR role = 'admin') AND active = 1 AND email IS NOT NULL AND email != '' LIMIT 1").get();
+  return Boolean(row);
+}
+
+export function getReporters(): User[] {
+  const rows = db.prepare("SELECT * FROM users WHERE role = 'reporter' AND active = 1 ORDER BY created_at DESC").all() as Record<string, unknown>[];
+  return rows.map((r) => ({
+    id: String(r.id),
+    username: String(r.username),
+    displayName: String(r.display_name),
+    displayNameTelugu: String(r.display_name_telugu),
+    role: 'reporter',
+    district: String(r.district),
+    bureau: String(r.bureau),
+    active: Boolean(r.active),
+    createdAt: String(r.created_at),
+    email: r.email ? String(r.email) : undefined,
+    avatarUrl: r.avatar_url ? String(r.avatar_url) : undefined,
+    googleId: r.google_id ? String(r.google_id) : undefined,
+    updatedAt: r.updated_at ? String(r.updated_at) : undefined,
+  }));
+}
+
+export function addReporter(payload: {
+  name: string;
+  email: string;
+  displayNameTelugu?: string;
+  district?: string;
+  bureau?: string;
+}): User {
+  const cleanEmail = payload.email.trim().toLowerCase();
+  const existing = getUserByEmail(cleanEmail);
+  const now = new Date().toISOString();
+  if (existing) {
+    db.prepare(`
+      UPDATE users
+      SET role = 'reporter',
+          display_name = ?,
+          display_name_telugu = ?,
+          district = ?,
+          bureau = ?,
+          active = 1,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      payload.name || existing.displayName,
+      payload.displayNameTelugu || existing.displayNameTelugu || `${payload.name} (జర్నలిస్ట్)`,
+      payload.district || existing.district || 'ఎన్టీఆర్ జిల్లా',
+      payload.bureau || existing.bureau || 'విజయవాడ డిజిటల్ బ్యూరో',
+      now,
+      existing.id
+    );
+    return {
+      ...existing,
+      displayName: payload.name || existing.displayName,
+      displayNameTelugu: payload.displayNameTelugu || existing.displayNameTelugu || `${payload.name} (జర్నలిస్ట్)`,
+      role: 'reporter',
+      district: payload.district || existing.district,
+      bureau: payload.bureau || existing.bureau,
+      active: true,
+      updatedAt: now,
+    };
+  }
+
+  const sanitizedUsername = cleanEmail.split('@')[0].replace(/[^a-z0-9._-]/g, '') || `reporter-${Date.now()}`;
+  const userId = `usr-rep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const teluguName = payload.displayNameTelugu?.trim() || `${payload.name} (జర్నలిస్ట్)`;
+  const district = payload.district?.trim() || 'ఎన్టీఆర్ జిల్లా';
+  const bureau = payload.bureau?.trim() || 'విజయవాడ డిజిటల్ బ్యూరో';
+  const avatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanEmail)}`;
+
+  db.prepare(`
+    INSERT INTO users (
+      id, username, password_hash, display_name, display_name_telugu,
+      role, district, bureau, active, created_at, email, avatar_url, updated_at
+    ) VALUES (?, ?, '', ?, ?, 'reporter', ?, ?, 1, ?, ?, ?, ?)
+  `).run(
+    userId,
+    sanitizedUsername,
+    payload.name,
+    teluguName,
+    district,
+    bureau,
+    now,
+    cleanEmail,
+    avatar,
+    now
+  );
+
+  return {
+    id: userId,
+    username: sanitizedUsername,
+    displayName: payload.name,
+    displayNameTelugu: teluguName,
+    role: 'reporter',
+    district,
+    bureau,
+    active: true,
+    createdAt: now,
+    email: cleanEmail,
+    avatarUrl: avatar,
+    updatedAt: now,
+  };
+}
+
+export function removeReporter(userId: string): boolean {
+  // Check if reporter has associated articles to prevent FOREIGN KEY constraint violation
+  const articleCount = (
+    db.prepare('SELECT COUNT(*) as count FROM articles WHERE reporter_id = ?').get(userId) as { count: number }
+  )?.count || 0;
+
+  if (articleCount > 0) {
+    // Soft delete: deactivate reporter so historical articles and foreign key integrity remain intact
+    const res = db.prepare("UPDATE users SET active = 0, updated_at = ? WHERE id = ? AND role = 'reporter'").run(
+      new Date().toISOString(),
+      userId
+    );
+    return res.changes > 0;
+  }
+
+  const res = db.prepare("DELETE FROM users WHERE id = ? AND role = 'reporter'").run(userId);
+  return res.changes > 0;
 }
 
 export function getAssetsForArticle(articleId: string): ImageAsset[] {
@@ -855,12 +1234,9 @@ export function buildFallbackValidPdfBuffer(edition: NewspaperEdition): Uint8Arr
 }
 
 function seedInitialDataIfEmpty() {
-  const countRow = db.prepare('SELECT COUNT(*) AS cnt FROM users').get() as { cnt: number };
-  if (countRow.cnt > 0) return;
-
   const now = '2026-10-19T05:00:00.000Z';
 
-  // 1. Seed Users (Reporters & Chief Editor)
+  // 1. Ensure Bureau / System Users exist so foreign keys for bureau stories are satisfied
   const usersToSeed: User[] = [
     {
       id: 'rep-vijayawada',
@@ -920,7 +1296,7 @@ function seedInitialDataIfEmpty() {
   ];
 
   const insertUser = db.prepare(
-    `INSERT INTO users (id, username, password_hash, display_name, display_name_telugu, role, district, bureau, active, created_at)
+    `INSERT OR IGNORE INTO users (id, username, password_hash, display_name, display_name_telugu, role, district, bureau, active, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   for (const u of usersToSeed) {
@@ -937,6 +1313,10 @@ function seedInitialDataIfEmpty() {
       u.createdAt
     );
   }
+
+  // 2. Only seed articles if the articles table is currently empty
+  const countRow = db.prepare('SELECT COUNT(*) AS cnt FROM articles').get() as { cnt: number };
+  if (countRow.cnt > 0) return;
 
   // 2. Write real binary PNG photographs to storage/assets/
   const photoConfigs: {
@@ -1548,6 +1928,10 @@ function seedInitialDataIfEmpty() {
     );
 
     for (const mod of [...page.modules, ...page.sideBriefs]) {
+      if (!mod.articleId) continue;
+      const existsInDb = db.prepare('SELECT id FROM articles WHERE id = ?').get(mod.articleId);
+      if (!existsInDb) continue;
+
       db.prepare(`
         INSERT INTO edition_article_assignments (id, edition_id, article_id, revision_number, page_number, placement_role, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)

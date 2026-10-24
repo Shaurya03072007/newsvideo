@@ -372,9 +372,15 @@ export function validateGeminiStorySchema(raw: unknown): {
 
 /**
  * Extracts numeric tokens from text to ensure AI editing does not hallucinate unsupported statistics.
+ * Normalizes both ASCII digits (0-9) and Telugu Unicode numerals (౦-౯) to standard digits.
  */
 export function extractNumericTokens(text: string): string[] {
-  const matches = text.match(/\d+(?:[.,]\d+)*/g) || [];
+  if (!text) return [];
+  // Normalize Telugu numerals (U+0C66 to U+0C6F) to standard ASCII 0-9
+  const normalized = text.replace(/[\u0C66-\u0C6F]/g, (ch) =>
+    String(ch.charCodeAt(0) - 0x0c66)
+  );
+  const matches = normalized.match(/\d+(?:[.,]\d+)*/g) || [];
   return Array.from(new Set(matches.map((m) => m.replace(/,/g, ''))));
 }
 
@@ -676,27 +682,61 @@ export function composeNewspaperEditionLayout(
   const carriedForwardArticleIds: string[] = [];
   let totalBacktrackReflows = 0;
 
-  // Separate short announcements/briefs for the narrow side column on Page 1
-  const briefCandidates = ranked.filter(
-    (a) =>
-      a.assignedCategory === 'Announcements' ||
-      a.assignedCategory === 'Community events' ||
-      (a.priorityScore < 65 && (!a.assets || a.assets.length === 0))
+  // 1. Explicit brief categories: Announcements and Community events
+  const explicitBriefs = ranked.filter(
+    (a) => a.assignedCategory === 'Announcements' || a.assignedCategory === 'Community events'
   );
-  const mainCandidates = ranked.filter((a) => !briefCandidates.includes(a));
+  const regularStories = ranked.filter((a) => !explicitBriefs.includes(a));
+
+  let mainCandidates: Article[] = [];
+  let briefCandidates: Article[] = [];
+
+  if (regularStories.length === 0) {
+    mainCandidates = explicitBriefs.slice(0, Math.min(explicitBriefs.length, Math.max(1, requestedPageCount > 1 ? 2 : 1)));
+    briefCandidates = explicitBriefs.slice(mainCandidates.length);
+  } else if (regularStories.length <= 4) {
+    mainCandidates = [...regularStories];
+    briefCandidates = [...explicitBriefs];
+  } else {
+    const coreMain = regularStories.slice(0, 4);
+    const candidateRemaining = regularStories.slice(4);
+    const extraBriefs = candidateRemaining.filter(
+      (a) => a.priorityScore < 65 && (!a.assets || a.assets.length === 0)
+    );
+    const extraMain = candidateRemaining.filter((a) => !extraBriefs.includes(a));
+    mainCandidates = [...coreMain, ...extraMain];
+    briefCandidates = [...explicitBriefs, ...extraBriefs];
+  }
+
+  // Sacred Rule: ranked[0] MUST ALWAYS be the Front Page Lead Story!
+  if (ranked.length > 0 && (!mainCandidates[0] || mainCandidates[0].id !== ranked[0].id)) {
+    mainCandidates = [ranked[0], ...mainCandidates.filter((a) => a.id !== ranked[0].id)];
+    briefCandidates = briefCandidates.filter((a) => a.id !== ranked[0].id);
+  }
+
   const orderedQueue = [...mainCandidates, ...briefCandidates];
 
   // Place side briefs in Column 6 of Page 1 first if available
   const page1 = pages[0];
   const sideColIdx = totalColumns - 1; // 0-indexed column 5 (Col 6)
   for (const brief of briefCandidates.slice(0, 3)) {
-    const bodyParas =
+    const rawParas =
       brief.aiBodyParagraphsShort && brief.aiBodyParagraphsShort.length > 0
         ? brief.aiBodyParagraphsShort
         : brief.aiBodyParagraphsFull && brief.aiBodyParagraphsFull.length > 0
         ? [brief.aiBodyParagraphsFull[0]]
         : [brief.originalBodyTelugu];
-    const headline = brief.compactHeadlineTelugu || brief.primaryHeadlineTelugu || brief.originalHeadline || 'సంక్షిప్త వార్త';
+    const bodyParas = rawParas.map((p) =>
+      containsTeluguUnicode(p) ? p : `${brief.location}: విలేకరి తాజా వార్తా నివేదిక`
+    );
+    const headline =
+      (brief.compactHeadlineTelugu && containsTeluguUnicode(brief.compactHeadlineTelugu))
+        ? brief.compactHeadlineTelugu
+        : (brief.primaryHeadlineTelugu && containsTeluguUnicode(brief.primaryHeadlineTelugu))
+        ? brief.primaryHeadlineTelugu
+        : (brief.originalHeadline && containsTeluguUnicode(brief.originalHeadline))
+        ? brief.originalHeadline
+        : `${brief.location || 'విలేకరి'}: తాజా వార్తా సమాచారం`;
     const catCfg = settings.categories.find((c) => c.id === brief.assignedCategory) || DEFAULT_CATEGORIES[0];
 
     const hMm = measureArticleModuleHeightMm({
@@ -762,19 +802,30 @@ export function composeNewspaperEditionLayout(
       article.assets?.find((a) => a.id === article.primaryAssetId) ||
       (article.assets && article.assets.length > 0 ? article.assets[0] : null);
 
-    const fullParas =
+    const rawFull =
       article.aiBodyParagraphsFull && article.aiBodyParagraphsFull.length > 0
         ? article.aiBodyParagraphsFull
         : article.originalBodyTelugu.split(/\n+/).filter(Boolean);
+    const fullParas = rawFull.map((p) =>
+      containsTeluguUnicode(p) ? p : `${article.location}: విలేకరి సమర్పించిన వార్తా నివేదిక - సంపాదక పరిశీలన`
+    );
     const shortParas =
       article.aiBodyParagraphsShort && article.aiBodyParagraphsShort.length > 0
-        ? article.aiBodyParagraphsShort
+        ? article.aiBodyParagraphsShort.map((p) =>
+            containsTeluguUnicode(p) ? p : `${article.location}: సంక్షిప్త వార్తా సమాచారం`
+          )
         : fullParas.slice(0, Math.max(1, Math.ceil(fullParas.length / 2)));
 
     const primaryHeadline =
-      article.primaryHeadlineTelugu || article.originalHeadline || 'ముఖ్య వార్త';
+      (article.primaryHeadlineTelugu && containsTeluguUnicode(article.primaryHeadlineTelugu))
+        ? article.primaryHeadlineTelugu
+        : (article.originalHeadline && containsTeluguUnicode(article.originalHeadline))
+        ? article.originalHeadline
+        : `${article.location || 'తాజా వార్త'}: సమగ్ర కథనం`;
     const compactHeadline =
-      article.compactHeadlineTelugu || primaryHeadline;
+      (article.compactHeadlineTelugu && containsTeluguUnicode(article.compactHeadlineTelugu))
+        ? article.compactHeadlineTelugu
+        : primaryHeadline;
 
     // Candidate module configurations in priority order (backtracking sequence)
     const candidateConfigs: {
@@ -800,7 +851,14 @@ export function composeNewspaperEditionLayout(
     let placed = false;
 
     // Pack Page 1 with top-ranked main stories while ensuring subsequent pages are never left blank
-    const page1MainQuota = mainCandidates.length >= 4 ? 3 : 1;
+    const page1MainQuota =
+      pages.length <= 1
+        ? 5
+        : mainCandidates.length >= 5
+        ? 3
+        : mainCandidates.length >= 3
+        ? 2
+        : 1;
     const preferredStartPage =
       isLeadCandidate || i < page1MainQuota
         ? 0

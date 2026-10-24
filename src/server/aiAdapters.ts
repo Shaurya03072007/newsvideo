@@ -140,13 +140,15 @@ export async function classifyArticleWithGemma(
 
   const allowedSectionList = settings.categories.map((c) => `${c.id} (${c.teluguLabel})`).join(', ');
 
-  const prompt = `You are the Editorial Classification Engine for a Telugu daily newspaper.
-Analyze the following reporter submission in Telugu and return ONLY a valid JSON object matching the exact schema below.
+  const prompt = `You are the Editorial Classification Engine for a Telugu daily newspaper ('ప్రజా వాణి').
+Analyze the following reporter submission (which may be submitted in Telugu OR English) and return ONLY a valid JSON object matching the exact schema below.
+NOTE: The submission can be in English or Telugu. Regardless of input language, ALL output metadata fields (principalSubject, location, district, entities, sectionTelugu, priorityExplanation, missingInformation, editorialConcerns) MUST BE RENDERED IN TELUGU SCRIPT.
 
 CRITICAL EDITORIAL RULES:
 1. Do NOT invent facts, infer guilt, or treat unverified allegations as established facts.
 2. Distinguish missing information from negative findings.
 3. Priority score (1-100) is an editorial recommendation based on public interest, local relevance, and completeness.
+4. Input language can be Telugu or English; always produce output values in authentic Telugu script.
 
 ALLOWED NEWSPAPER SECTIONS:
 ${allowedSectionList}
@@ -157,7 +159,7 @@ REPORTER SUBMISSION:
 - Reported Location: ${article.location} (District: ${article.district})
 - Event Date: ${article.eventDate}
 - Original Headline: ${article.originalHeadline || '(None provided)'}
-- Original Telugu Text:
+- Original Submission Text (Telugu or English):
 ${article.originalBodyTelugu}
 
 CANDIDATE DUPLICATE IDS DETECTED BY SHINGLE MATCH:
@@ -167,14 +169,14 @@ Return ONLY valid JSON with these exact keys:
 {
   "section": "One of the exact English category names from the allowed list",
   "sectionTelugu": "Telugu section label",
-  "principalSubject": "Concise Telugu summary of principal subject",
+  "principalSubject": "Concise Telugu summary of principal subject in Telugu script",
   "location": "Town/city in Telugu",
   "district": "District name in Telugu",
   "eventDate": "${article.eventDate}",
-  "entities": ["Array of key people, departments, or places mentioned in Telugu"],
+  "entities": ["Array of key people, departments, or places mentioned in Telugu script"],
   "localRelevanceScore": 85,
   "priorityScore": 82,
-  "priorityExplanation": "Short explanation of why this priority score was recommended",
+  "priorityExplanation": "Short explanation in Telugu of why this priority score was recommended",
   "duplicateCandidateIds": ["Array of duplicate candidate article IDs if any"],
   "packageGroupTopic": "Common news package topic in Telugu or null",
   "missingInformation": ["List any missing source details without guessing them"],
@@ -182,7 +184,7 @@ Return ONLY valid JSON with these exact keys:
   "riskLevel": "low | medium | high",
   "hasSeriousAllegations": false,
   "hasUnverifiedClaims": false
-}`;
+};`;
 
   const output = await withBoundedBackoff(
     async (attempt) => {
@@ -253,20 +255,27 @@ export async function prepareTeluguStoryWithGemini(
   }));
 
   const prompt = `మీరు ప్రముఖ తెలుగు దినపత్రిక ('ప్రజా వాణి') ప్రధాన ఉప-సంపాదకులు (Chief Sub-Editor).
-క్రింద ఇచ్చిన విలేకరి వార్తా నివేదికను మరియు వర్గీకరణ వివరాలను పరిశీలించి, ముద్రణకు సిద్ధంగా ఉన్న తెలుగు వార్తా కథనాన్ని (JSON ఆకృతిలో) రూపొందించండి.
+క్రింద ఇచ్చిన విలేకరి వార్తా నివేదికను మరియు వర్గీకరణ వివరాలను పరిశీలించి, ముద్రణకు సిద్ధంగా ఉన్న ఉన్నత ప్రమాణాల తెలుగు వార్తా కథనాన్ని (JSON ఆకృతిలో) రూపొందించండి.
 
-కఠినమైన సంపాదకీయ నియమాలు (CRITICAL RULES):
-1. మూల వార్తలోని వ్యక్తుల పేర్లు, స్థలాలు, తేదీలు, సంఖ్యలు, గణాంకాలు మరియు వాస్తవాలను యథాతథంగా కాపాడాలి.
-2. మూలంలో లేని కొత్త గణాంకాలు, ఊహాజనిత వ్యాఖ్యలు, సాక్షులు లేదా నిర్ధారణ కాని విషయాలను అస్సలు చేర్చవద్దు.
-3. తెలుగు వ్యాకరణం, అక్షర దోషాలు సరిదిద్ది స్పష్టమైన వార్తాపత్రిక శైలిలో (Newspaper Telugu style) రాయండి. ఆంగ్లంలోకి అనువదించవద్దు.
+కఠినమైన సంపాదకీయ మరియు భాషా నియమాలు (MANDATORY EDITORIAL & LANGUAGE RULES):
+1. భాషా నియమం (STRICT OUTPUT IN TELUGU):
+   - విలేకరి సమర్పణ తెలుగులో లేదా ఆంగ్లంలో (Telugu or English) ఉండవచ్చు.
+   - అయితే మీ అవుట్‌పుట్ మాత్రం ఖచ్చితంగా మరియు నూరు శాతం ప్రామాణికమైన తెలుగు లిపిలోనే (100% pure authentic Telugu script) ఉండాలి!
+   - ఒకవేళ మూల సమర్పణ ఆంగ్లంలో ఉంటే (If the submission is in English), ఆంగ్ల వాక్యాలన్నింటినీ సహజమైన, స్పష్టమైన మరియు హుందాతనంతో కూడిన తెలుగు దినపత్రిక వార్తా శైలిలోకి (Telugu Broadsheet Newspaper Style) అనువదించి తిరగరాయండి.
+   - అవుట్‌పుట్‌లోని శీర్షికలు (primaryHeadlineTelugu, compactHeadlineTelugu), ఉప-శీర్షిక (standfirstTelugu), సారాంశం (summaryTelugu), వార్తా పేరాలు (bodyParagraphsFullTelugu, bodyParagraphsShortTelugu) మరియు ఫోటో వివరణలు (suggestedCaptions) అన్నీ తప్పనిసరిగా శుద్ధ తెలుగు లిపిలోనే ఉండాలి. ఎక్కడా ఆంగ్ల వాక్యాలు ఉండకూడదు.
+2. వాస్తవాల పరిరక్షణ (FACT PRESERVATION):
+   - మూల వార్తలోని వ్యక్తుల పేర్లు, స్థలాలు, తేదీలు, సంఖ్యలు, గణాంకాలు మరియు వాస్తవాలను యథాతథంగా కాపాడాలి.
+   - ఆంగ్లంలో ఉన్న పేర్లు/సంస్థలు/ప్రదేశాలను సరైన తెలుగు లిప్యంతరీకరణతో (Proper Telugu transliteration, e.g., 'Collectorate' -> 'కలెక్టరేట్', 'Prakasam Barrage' -> 'ప్రకాశం బ్యారేజీ') రాయండి.
+3. కల్పితాలు నివారించండి (NO HALLUCINATIONS):
+   - మూలంలో లేని కొత్త గణాంకాలు, ఊహాజనిత వ్యాఖ్యలు, సాక్షులు లేదా నిర్ధారణ కాని విషయాలను అస్సలు చేర్చవద్దు.
 4. వర్గీకరణ సమాచారం (Gemma Metadata) మూల వార్తకు విరుద్ధంగా ఉంటే, దానిని మౌనంగా మార్చకుండా 'contradictionFlags' లో స్పష్టంగా పేర్కొనండి.
-5. ఫోటో క్యాప్షన్లు కేవలం విలేకరి ఇచ్చిన సమాచారం ఆధారంగానే ఉండాలి.
+5. ఫోటో క్యాప్షన్లు కేవలం విలేకరి ఇచ్చిన సమాచారం ఆధారంగానే తెలుగులో ఉండాలి.
 
-మూల వార్తా వివరాలు (ORIGINAL REPORTER SUBMISSION):
+మూల వార్తా వివరాలు (ORIGINAL REPORTER SUBMISSION - IN TELUGU OR ENGLISH):
 - స్థలం (Location): ${article.location} (${article.district})
 - తేదీ (Event Date): ${article.eventDate}
 - విలేకరి శీర్షిక (Original Headline): ${article.originalHeadline || '(ఇవ్వలేదు)'}
-- మూల తెలుగు పాఠ్యం (Original Telugu Text):
+- మూల వార్తా పాఠ్యం (Original Text - Telugu or English):
 ${article.originalBodyTelugu}
 
 మోడల్-A (Gemma 4 31B) వర్గీకరణ:

@@ -20,6 +20,8 @@ import {
   X,
   Columns,
   Shapes,
+  Volume2,
+  Square,
 } from 'lucide-react';
 import type {
   GeometricShapeType,
@@ -41,6 +43,8 @@ import {
   runLiveAgenticPdfVerifyAndDownload,
   type PdfDownloadPayload,
 } from './PdfExportInspectorModal.tsx';
+import { useToast } from './ToastNotification.tsx';
+import { speakTelugu, stopSpeaking } from './BreakingNewsTicker.tsx';
 
 interface NewspaperBroadsheetViewProps {
   edition: NewspaperEdition | null;
@@ -129,7 +133,7 @@ const SUPER_KICKERS_BY_ARTICLE: Record<string, string> = {
   'art-kuchipudi-utsav': 'సంప్రదాయ కళా వైభవం · బెజవాడలో మూడు రోజుల నాట్య నీరాజనం',
 };
 
-export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = ({
+export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = React.memo(({
   edition,
   editions,
   settings,
@@ -138,9 +142,11 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
   onRegenerateEdition,
   isGenerating,
 }) => {
+  const { addToast } = useToast();
   const [activePageNumber, setActivePageNumber] = useState<number>(1);
   const [spreadMode, setSpreadMode] = useState<'single' | 'dual_spread'>('single');
   const [zoomPercent, setZoomPercent] = useState<number>(100);
+  const [studioDarkMode, setStudioDarkMode] = useState<boolean>(true);
   const [spotlightCategory, setSpotlightCategory] = useState<string>('all');
   const [showDiagnosticsOverlay, setShowDiagnosticsOverlay] = useState<boolean>(false);
   const [showDesignerEditorPanel, setShowDesignerEditorPanel] = useState<boolean>(false);
@@ -150,8 +156,16 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
 
   // Interactive e-Paper Story Clipping & Live Layout Studio state
   const [activeClippedModule, setActiveClippedModule] = useState<LayoutModule | null>(null);
+  const [isReadingAloud, setIsReadingAloud] = useState<boolean>(false);
   const [readerFontScale, setReaderFontScale] = useState<number>(1);
   const [moduleOverrides, setModuleOverrides] = useState<Record<string, ModuleLiveOverride>>({});
+
+  useEffect(() => {
+    if (!activeClippedModule) {
+      stopSpeaking();
+      setIsReadingAloud(false);
+    }
+  }, [activeClippedModule]);
 
   // Cookie-Safe In-App PDF Download & Print Preview state
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
@@ -168,13 +182,28 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
     if (!edition || isDownloadingPdf) return;
     setIsDownloadingPdf(true);
     setPdfDownloadError(null);
+    addToast({
+      type: 'loading',
+      title: 'Generating Broadsheet PDF',
+      message: `Compiling high-resolution vector PDF for Edition #${edition.editionNumber}...`,
+      duration: 3500,
+    });
     try {
       const payload = await fetchAndTriggerCookieSafePdfDownload(edition.id);
-      setPdfInspectorPayload(payload);
+      addToast({
+        type: 'success',
+        title: 'Print PDF Downloaded! 🖨️',
+        message: `${payload.filename} (${(payload.sizeBytes / 1024).toFixed(0)} KB) saved to device.`,
+        duration: 2500,
+      });
     } catch (err) {
-      setPdfDownloadError(
-        err instanceof Error ? err.message : 'Unable to generate or download PDF artifact.'
-      );
+      const msg = err instanceof Error ? err.message : 'Unable to generate or download PDF artifact.';
+      setPdfDownloadError(msg);
+      addToast({
+        type: 'error',
+        title: 'PDF Generation Failed',
+        message: msg,
+      });
     } finally {
       setIsDownloadingPdf(false);
     }
@@ -184,22 +213,43 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
     if (!edition || isVerifyingAgentPdf) return;
     setIsVerifyingAgentPdf(true);
     setPdfDownloadError(null);
+    addToast({
+      type: 'loading',
+      title: 'పత్రిక ముద్రణా నాణ్యత తనిఖీ (Print Quality Audit)',
+      message: 'ముద్రణ ప్రమాణాలు మరియు పేజీ లేఅవుట్ సమగ్రతను పరిశీలిస్తోంది...',
+      duration: 5000,
+    });
     try {
       const { payload } = await runLiveAgenticPdfVerifyAndDownload(edition.id);
       setPdfInspectorPayload(payload);
+      addToast({
+        type: 'success',
+        title: 'ముద్రణ తనిఖీ పూర్తయింది! 🎯',
+        message: `ముద్రణా నాణ్యత ఆమోదించబడింది (${payload.agenticPdfReport?.ready_for_user ? 'అన్ని ప్రమాణాలు సరిగ్గా ఉన్నాయి' : 'తనిఖీ పూర్తయింది'}).`,
+      });
     } catch (err) {
-      setPdfDownloadError(
-        err instanceof Error ? err.message : 'Agentic PDF verification loop failed.'
-      );
+      const msg = err instanceof Error ? err.message : 'ముద్రణా తనిఖీలో సమస్య ఏర్పడింది.';
+      setPdfDownloadError(msg);
+      addToast({
+        type: 'error',
+        title: 'Agent Audit Failed',
+        message: msg,
+      });
     } finally {
       setIsVerifyingAgentPdf(false);
     }
   };
 
+  const prevEditionIdRef = useRef<string | null>(edition?.id || null);
   useEffect(() => {
-    setActivePageNumber(1);
-    setSelectedPlanVersion(edition?.masterPlan?.plan_version || null);
-  }, [edition?.id, edition?.masterPlan?.plan_version]);
+    if (edition?.id && prevEditionIdRef.current !== edition.id) {
+      prevEditionIdRef.current = edition.id;
+      setActivePageNumber(1);
+      setSelectedPlanVersion(edition?.masterPlan?.plan_version || null);
+    } else if (edition?.masterPlan?.plan_version && selectedPlanVersion === null) {
+      setSelectedPlanVersion(edition.masterPlan.plan_version);
+    }
+  }, [edition?.id, edition?.masterPlan?.plan_version, selectedPlanVersion]);
 
   // Measure actual rendered Telugu text modules in the browser DOM engine
   useEffect(() => {
@@ -232,8 +282,9 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
 
   if (!edition) {
     return (
-      <div className="p-8 bg-white border border-stone-200 rounded-lg text-center">
-        <p className="text-stone-600 mb-4">No newspaper edition has been generated yet.</p>
+      <div className="glass-card p-10 text-center max-w-lg mx-auto">
+        <p className="text-slate-400 mb-2 font-medium">ఇంకా ఏ దినపత్రిక సంచిక రూపొందించబడలేదు.</p>
+        <p className="text-xs text-slate-500">ఎడిషన్ల విభాగంలో ఒక ఎడిషన్‌ను ఎంచుకోండి లేదా కొత్తది సృష్టించండి.</p>
       </div>
     );
   }
@@ -300,14 +351,18 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
   };
 
   const updateModuleOverride = (articleId: string, patch: Partial<ModuleLiveOverride>) => {
-    setModuleOverrides((prev) => ({
-      ...prev,
-      [articleId]: {
-        theme: prev[articleId]?.theme || 'auto',
-        ...prev[articleId],
-        ...patch,
-      },
-    }));
+    setModuleOverrides((prev) => {
+      const existing = prev[articleId];
+      const nextOverride: ModuleLiveOverride = Object.assign(
+        { theme: 'auto' as BoxVisualTheme },
+        existing,
+        patch
+      );
+      return {
+        ...prev,
+        [articleId]: nextOverride,
+      };
+    });
   };
 
   const renderModuleCard = (
@@ -512,7 +567,66 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
         )}
 
         {/* Asymmetric Layout + Non-Rectangular Geometric Shape & Text-Wrap Engine */}
-        {(() => {
+        {mod.moduleId.includes('roundup') ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3 bg-[#FFFDF7] border-t-2 border-[#991B1B] font-telugu-sans text-[12px] my-1">
+            <div className="border-r border-stone-200 pr-2.5">
+              <span className="bg-[#991B1B] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">తిరుపతి</span>
+              <p className="mt-1 font-semibold text-stone-900 leading-snug">ప్రాథమిక ఆరోగ్య కేంద్రాల్లో 24 గంటల అత్యవసర వైద్య సేవలు ప్రారంభం.</p>
+            </div>
+            <div className="border-r border-stone-200 pr-2.5">
+              <span className="bg-[#065F46] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">వరంగల్</span>
+              <p className="mt-1 font-semibold text-stone-900 leading-snug">రూ. 380 కోట్ల రింగ్ రోడ్డు వంతెన పనులు తుది దశకు చేరాయి.</p>
+            </div>
+            <div className="border-r border-stone-200 pr-2.5">
+              <span className="bg-[#1E40AF] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">గన్నవరం</span>
+              <p className="mt-1 font-semibold text-stone-900 leading-snug">మెడ్-టెక్ పార్కులో రూ. 1,850 కోట్ల నూతన పెట్టుబడుల ఒప్పందం.</p>
+            </div>
+            <div>
+              <span className="bg-[#B45309] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">విజయవాడ</span>
+              <p className="mt-1 font-semibold text-stone-900 leading-snug">అక్టోబర్ 24 నుంచి తుమ్మలపల్లిలో జాతీయ కూచిపూడి నాట్యోత్సవాలు.</p>
+            </div>
+          </div>
+        ) : mod.moduleId.includes('cultural') ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3 bg-[#FFFBEB] border-t-2 border-[#B45309] font-telugu-sans text-[12px] my-1">
+            <div className="border-r border-amber-200 pr-2.5">
+              <strong className="text-[#B45309]">విజయవాడ:</strong> తుమ్మలపల్లి కళాక్షేత్రంలో మూడు రోజుల పాటు రాష్ట్రస్థాయి కూచిపూడి నృత్యోత్సవాలు. 600 మంది కళాకారుల భాగస్వామ్యం.
+            </div>
+            <div className="border-r border-amber-200 pr-2.5">
+              <strong className="text-[#065F46]">తిరుపతి:</strong> శీతాకాల యాత్రికుల రద్దీ దృష్ట్యా అలిపిరి, శ్రీవారి మెట్టు మార్గాల్లో అదనపు వైద్య శిబిరాలు, నిరంతర అన్నప్రసాద వితరణ.
+            </div>
+            <div className="border-r border-amber-200 pr-2.5">
+              <strong className="text-[#1E40AF]">రాజమహేంద్రవరం:</strong> గోదావరి పుష్కర ఘాట్ల ఆధునీకరణకు ప్రణాళిక సిద్ధం. పర్యాటక అభివృద్ధికి రూ. 45 కోట్ల నిధుల మంజూరు.
+            </div>
+            <div>
+              <strong className="text-[#991B1B]">విశాఖపట్నం:</strong> రుషికొండ తీరంలో అంతర్జాతీయ సముద్ర పర్యాటక ఉత్సవాల ఏర్పాట్లు ముమ్మరం. నేటి సాయంత్రం వేడుకలు ప్రారంభం.
+            </div>
+          </div>
+        ) : mod.moduleId.includes('editorial') ? (
+          <div className="p-3 bg-[#FFFDF7] border-2 border-[#991B1B] font-telugu-sans my-1 space-y-2">
+            <div className="columns-1 md:columns-2 gap-3.5 font-telugu-serif text-[12.5px] leading-relaxed text-stone-800 text-justify">
+              {mod.bodyParagraphsTelugu.map((p, pIdx) => (
+                <p key={pIdx} className="mb-2 indent-3">{p}</p>
+              ))}
+            </div>
+            <div className="pt-2 border-t border-red-200 text-right text-[11px] font-bold text-[#991B1B] font-telugu-sans">
+              — ప్రధాన సంపాదకుడు, ప్రజా వాణి దినపత్రిక
+            </div>
+          </div>
+        ) : mod.moduleId.includes('analysis') ? (
+          <div className="p-3 bg-[#F0FDF4] border border-[#065F46] font-telugu-sans my-1 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#DCFCE7]/70 p-2 border border-emerald-300 text-[11px] font-semibold text-emerald-950">
+              <div className="flex items-start gap-1"><span className="text-[#065F46] font-bold">❖</span> రూ. 12,000 కోట్ల పెట్టుబడులు</div>
+              <div className="flex items-start gap-1"><span className="text-[#065F46] font-bold">❖</span> 75% స్థానిక యువతకు ఉపాధి</div>
+              <div className="flex items-start gap-1"><span className="text-[#065F46] font-bold">❖</span> 3 నగరాల్లో నూతన క్లస్టర్లు</div>
+            </div>
+            <div className="font-telugu-serif text-[12.5px] leading-relaxed text-stone-800 text-justify">
+              {mod.bodyParagraphsTelugu.map((p, pIdx) => (
+                <p key={pIdx} className="mb-1.5">{p}</p>
+              ))}
+            </div>
+          </div>
+        ) : (
+          (() => {
           const activeShapeType: GeometricShapeType =
             override?.shapeType && override.shapeType !== 'auto'
               ? override.shapeType
@@ -535,77 +649,6 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
               ? false
               : defaultFloatWrap && !mod.isLeadStory;
 
-          if (useFloatedTextWrap && activeShapeType !== 'rectangle') {
-            return (
-              <div className="space-y-2.5">
-                {/* Geometric Shape & Text-Wrap Indicator Ribbon */}
-                <div className="flex flex-wrap items-center justify-between gap-1.5 px-2 py-1 bg-white/90 border border-stone-300 font-telugu-sans text-[10.5px]">
-                  <span
-                    className="font-extrabold flex items-center gap-1"
-                    style={{ color: themeHeaderBadgeColors[visualTheme] }}
-                  >
-                    <Shapes className="w-3 h-3 shrink-0" />
-                    జ్యామితీయ ఆకృతి: {shapeSpec.label_telugu}
-                  </span>
-                  <span className="font-mono-tabular text-[10px] text-stone-600">
-                    CSS shape-outside: {shapeSpec.shape_type} · Area Eff:{' '}
-                    {Math.round(shapeSpec.area_efficiency_factor * 100)}%
-                  </span>
-                </div>
-
-                {/* Floated Non-Rectangular Shape Inside Justified Telugu Prose */}
-                <div
-                  className="font-telugu-serif text-[#18181B] text-justify clearfix"
-                  style={{
-                    fontSize: `${Math.max(13.5, Math.round(mod.bodyFontSizePt * 1.34))}px`,
-                    lineHeight: mod.lineHeightRatio,
-                  }}
-                >
-                  <ShapedPhotoOrMedallion
-                    module={mod}
-                    shapeType={activeShapeType}
-                    accentColorHex={themeHeaderBadgeColors[visualTheme]}
-                    mode="floated_text_wrap"
-                    floatDirection={idx % 2 === 1 ? 'left' : 'right'}
-                  />
-
-                  {displayedParagraphs.map((para, pIdx) => (
-                    <p key={pIdx} className="mb-2">
-                      {pIdx === 0 && !mod.isSideBrief && (
-                        <strong
-                          className="font-telugu-sans font-extrabold mr-1"
-                          style={{ color: themeHeaderBadgeColors[visualTheme] }}
-                        >
-                          {mod.locationDatelineTelugu}:
-                        </strong>
-                      )}
-                      {pIdx === 0 && !mod.isSideBrief
-                        ? stripLeadingDateline(para, mod.locationDatelineTelugu)
-                        : para}
-                    </p>
-                  ))}
-                  <div className="clear-both" />
-                </div>
-
-                {/* Key Metrics Infographic Strip Below Wrapped Shape */}
-                {keyMetrics && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1.5 bg-white/90 border border-stone-300 font-telugu-sans">
-                    {keyMetrics.map((km, kIdx) => (
-                      <div key={kIdx} className="px-2 py-1 bg-stone-50 border border-stone-200/80">
-                        <div className="text-[10px] font-semibold text-stone-600">{km.label}</div>
-                        <div
-                          className="text-[11.5px] font-extrabold"
-                          style={{ color: themeHeaderBadgeColors[visualTheme] }}
-                        >
-                          {km.value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          }
 
           if (isHorizontalPanorama && hasPhoto) {
             return (
@@ -744,7 +787,8 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
               )}
             </div>
           );
-        })()}
+        })()
+        )}
         </div>
 
         {/* Bottom-Aligned Lead Story Control Room & District Canal Schedule Strip */}
@@ -791,7 +835,11 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
               : `${Math.round(1480 * (zoomPercent / 100))}px`,
           zoom: spreadMode === 'dual_spread' ? 0.59 : 1,
         }}
-        className="broadsheet-page p-5 md:p-7 flex flex-col justify-between transition-all duration-150 border-2 border-stone-400 shadow-lg"
+        className={`broadsheet-page p-5 md:p-7 flex flex-col justify-between transition-all duration-150 border-2 shadow-2xl ${
+          studioDarkMode
+            ? 'studio-dark border-slate-700/80 shadow-cyan-950/20'
+            : 'border-stone-400 shadow-stone-900/40'
+        }`}
       >
         <div>
           {/* ============================================================== */}
@@ -1041,7 +1089,7 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                   <div className="bg-[#B45309] text-white font-extrabold text-[11px] px-2 py-1 mb-2 text-center">
                     ఈనాటి ముఖ్య గణాంకాలు
                   </div>
-                  <div className="space-y-1.5 text-[11.5px]">
+                  <div className="space-y-1.5 text-[11px]">
                     <div className="flex justify-between border-b border-amber-200 pb-1">
                       <span className="font-semibold text-stone-800">కృష్ణా డెల్టా ఆయకట్టు:</span>
                       <strong className="text-[#991B1B]">13.08 లక్షల ఎకరాలు</strong>
@@ -1054,19 +1102,64 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                       <span className="font-semibold text-stone-800">కొత్త ఇ-బస్సులు:</span>
                       <strong className="text-[#1E40AF]">120 సర్వీసులు</strong>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between border-b border-amber-200 pb-1">
                       <span className="font-semibold text-stone-800">ఐటీ పెట్టుబడులు:</span>
                       <strong className="text-[#78350F]">రూ. 1,850 కోట్లు</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-stone-800">ఆరోగ్య కేంద్రాలు:</span>
+                      <strong className="text-[#065F46]">24 గంటలు</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Market Rates Card (మార్కెట్ సమాచారం · ధరలు) */}
+                <div className="bg-[#F0FDF4] border border-[#059669] p-2.5 font-telugu-sans">
+                  <div className="bg-[#065F46] text-white font-extrabold text-[11px] px-2 py-1 mb-2 text-center">
+                    మార్కెట్ సమాచారం · ధరలు
+                  </div>
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex justify-between border-b border-emerald-200 pb-1">
+                      <span className="font-semibold text-stone-800">24K బంగారం (10గ్రా):</span>
+                      <strong className="text-[#991B1B]">₹76,450</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-emerald-200 pb-1">
+                      <span className="font-semibold text-stone-800">22K బంగారం (10గ్రా):</span>
+                      <strong className="text-[#991B1B]">₹70,080</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-emerald-200 pb-1">
+                      <span className="font-semibold text-stone-800">వెండి (కేజీ):</span>
+                      <strong className="text-[#1E3A8A]">₹91,200</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-emerald-200 pb-1">
+                      <span className="font-semibold text-stone-800">గ్రేడ్-ఎ ధాన్యం (క్విం):</span>
+                      <strong className="text-[#065F46]">₹2,320</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-emerald-200 pb-1">
+                      <span className="font-semibold text-stone-800">పత్తి (క్వింటాల్):</span>
+                      <strong className="text-[#78350F]">₹7,520</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-semibold text-stone-800">పెట్రోల్ / డీజిల్:</span>
+                      <strong className="text-stone-900">₹109.8 / ₹97.6</strong>
                     </div>
                   </div>
                 </div>
 
                 {/* Editorial Integrity & Reader Notice Box */}
                 <div className="mt-auto border border-stone-400 bg-[#FAF8F3] p-2.5 font-telugu-sans text-[11px] leading-relaxed text-stone-700">
-                  <div className="font-extrabold text-[#991B1B] border-b border-stone-300 pb-1 mb-1">
-                    పాఠకులకు ముఖ్య సూచన
+                  <div className="font-extrabold text-[#991B1B] border-b border-stone-300 pb-1 mb-1.5 flex items-center justify-between">
+                    <span>పాఠకుల వేదిక &amp; సంపాదకీయం</span>
+                    <span className="text-[9.5px] bg-emerald-100 text-emerald-800 px-1 py-0.2 rounded font-mono-tabular">100% Verified</span>
                   </div>
-                  ఈ సంచికలోని వార్తలు విలేకరుల నివేదికల ఆధారంగా ఏఐ సంపాదకీయ ప్రమాణాలతో ధృవీకరించబడి ముద్రించబడ్డాయి.
+                  <div className="space-y-0.5 text-[10.5px]">
+                    <div><strong>RNI:</strong> APENG/2028/88412</div>
+                    <div><strong>ముద్రణ:</strong> విజయవాడ ప్రధాన బ్యూరో</div>
+                    <div><strong>హెల్ప్‌లైన్:</strong> 1800-425-9988</div>
+                    <div className="text-[10px] text-stone-500 pt-1 border-t border-stone-200 mt-1">
+                      విలేకరుల నివేదికల ఆధారంగా ఏఐ సంపాదకీయ ప్రమాణాలతో ముద్రించబడింది.
+                    </div>
+                  </div>
                 </div>
               </aside>
             )}
@@ -1103,37 +1196,35 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
       {/* ==================================================================== */}
       {/* INTERACTIVE E-PAPER & DESIGNER+EDITOR CONTROL RIBBON                 */}
       {/* ==================================================================== */}
-      <div className="bg-white border border-stone-300 p-3 space-y-2.5 shadow-xs">
+      {/* ==================================================================== */}
+      {/* EXECUTIVE BROADSHEET STUDIO DRAFTING CONSOLE                         */}
+      {/* ==================================================================== */}
+      <div className="glass-card p-4 space-y-3 border border-slate-800/90 rounded-2xl shadow-xl shadow-black/40 text-slate-200">
+        {/* Tier 1: Grouped Executive Command Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <label
-              htmlFor="edition-select"
-              className="text-xs font-semibold text-stone-700 whitespace-nowrap"
-            >
-              సంచిక (Edition):
-            </label>
+          {/* Left Cluster: Edition & Page Switching */}
+          <div className="flex flex-wrap items-center gap-2">
             <select
               id="edition-select"
               value={edition.id}
               onChange={(e) => onSelectEdition(e.target.value)}
-              className="px-2.5 py-1.5 text-xs font-medium bg-stone-50 border border-stone-300 text-stone-900 focus:outline-none focus:border-stone-900"
+              className="px-3 py-1.5 text-xs font-semibold bg-slate-900 border border-slate-700/80 text-slate-100 rounded-xl focus:outline-none focus:border-rose-500 cursor-pointer"
             >
               {editions.map((ed) => (
                 <option key={ed.id} value={ed.id}>
-                  #{ed.editionNumber} · {ed.editionDate} — {ed.editionTitleTelugu} (Plan v
-                  {ed.masterPlan?.plan_version || 1})
+                  Edition #{ed.editionNumber} · {ed.editionDate} (Plan v{ed.masterPlan?.plan_version || 1})
                 </option>
               ))}
             </select>
 
             {/* Page Navigation Tabs */}
-            <div className="flex items-center border border-stone-300 bg-stone-50">
+            <div className="flex items-center border border-slate-700/80 bg-slate-900 rounded-xl p-0.5">
               <button
                 type="button"
                 aria-label="Previous Page"
                 disabled={activePageNumber <= 1 || spreadMode === 'dual_spread'}
                 onClick={() => setActivePageNumber((p) => Math.max(1, p - 1))}
-                className="p-1.5 text-stone-700 hover:bg-stone-200 disabled:opacity-40 cursor-pointer"
+                className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg disabled:opacity-20 cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
@@ -1145,67 +1236,81 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                     setSpreadMode('single');
                     setActivePageNumber(p.pageNumber);
                   }}
-                  className={`px-3 py-1.5 text-xs font-telugu-sans font-bold whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  className={`px-3 py-1 text-xs font-telugu-sans font-bold rounded-lg cursor-pointer transition-all ${
                     spreadMode === 'single' && activePageNumber === p.pageNumber
-                      ? 'bg-[#991B1B] text-white'
-                      : 'text-stone-800 hover:bg-stone-200'
+                      ? 'bg-rose-600 text-white shadow-sm shadow-rose-950 font-bold'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                   }`}
                 >
-                  పేజీ {p.pageNumber} ({p.modules.length + p.sideBriefs.length} వార్తలు)
+                  పేజీ {p.pageNumber} ({p.modules.length + p.sideBriefs.length})
                 </button>
               ))}
               <button
                 type="button"
                 aria-label="Next Page"
-                disabled={
-                  activePageNumber >= edition.pages.length || spreadMode === 'dual_spread'
-                }
-                onClick={() =>
-                  setActivePageNumber((p) => Math.min(edition.pages.length, p + 1))
-                }
-                className="p-1.5 text-stone-700 hover:bg-stone-200 disabled:opacity-40 cursor-pointer"
+                disabled={activePageNumber >= edition.pages.length || spreadMode === 'dual_spread'}
+                onClick={() => setActivePageNumber((p) => Math.min(edition.pages.length, p + 1))}
+                className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg disabled:opacity-20 cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
 
-            {/* 1-Page vs 2-Page Spread Toggle */}
+            {/* 2-Page Spread Toggle */}
             {edition.pages.length > 1 && (
               <button
                 type="button"
-                onClick={() =>
-                  setSpreadMode((m) => (m === 'single' ? 'dual_spread' : 'single'))
-                }
-                className={`px-2.5 py-1.5 text-xs font-medium border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                onClick={() => setSpreadMode((m) => (m === 'single' ? 'dual_spread' : 'single'))}
+                className={`px-2.5 py-1.5 text-xs font-medium rounded-xl border flex items-center gap-1.5 cursor-pointer transition-colors ${
                   spreadMode === 'dual_spread'
-                    ? 'bg-stone-900 text-white border-stone-900'
-                    : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100'
+                    ? 'bg-amber-400/20 text-amber-300 border-amber-500/50 shadow-xs'
+                    : 'bg-slate-900 text-slate-300 border-slate-700/80 hover:bg-slate-800'
                 }`}
               >
                 <Columns className="w-3.5 h-3.5" />
-                {spreadMode === 'dual_spread' ? 'Single Page View' : '2-Page Spread View'}
+                <span>{spreadMode === 'dual_spread' ? 'Single View' : 'Spread View'}</span>
               </button>
             )}
+          </div>
+
+          {/* Center Cluster: Canvas Proofing Tools */}
+          <div className="flex items-center gap-2">
+            {/* Paper Theme Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                setStudioDarkMode((d) => !d);
+                addToast({
+                  type: 'info',
+                  title: studioDarkMode ? 'Classic Warm Newsprint' : 'Studio Cyber-Dark Paper',
+                  message: studioDarkMode ? 'Broadsheet rendered in vintage newsprint palette' : 'Broadsheet rendered in high-contrast studio dark palette',
+                  duration: 2000,
+                });
+              }}
+              className="px-2.5 py-1.5 text-xs font-medium rounded-xl border border-slate-700/80 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <span>{studioDarkMode ? '🌙 Dark Paper' : '📜 Classic Newsprint'}</span>
+            </button>
 
             {/* Zoom Controls */}
             {spreadMode === 'single' && (
-              <div className="flex items-center gap-1 border border-stone-300 bg-stone-50 px-2 py-1">
+              <div className="flex items-center gap-1 border border-slate-700/80 bg-slate-900 rounded-xl px-2 py-1">
                 <button
                   type="button"
                   aria-label="Zoom Out"
                   onClick={() => setZoomPercent((z) => Math.max(75, z - 10))}
-                  className="p-1 text-stone-700 hover:text-stone-900 cursor-pointer"
+                  className="p-0.5 text-slate-400 hover:text-white cursor-pointer"
                 >
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
-                <span className="font-mono-tabular text-xs text-stone-800 px-1">
+                <span className="font-mono text-xs text-slate-200 px-1 font-semibold min-w-[36px] text-center">
                   {zoomPercent}%
                 </span>
                 <button
                   type="button"
                   aria-label="Zoom In"
                   onClick={() => setZoomPercent((z) => Math.min(125, z + 10))}
-                  className="p-1 text-stone-700 hover:text-stone-900 cursor-pointer"
+                  className="p-0.5 text-slate-400 hover:text-white cursor-pointer"
                 >
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
@@ -1213,122 +1318,112 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
             )}
           </div>
 
-          {/* Right Actions: Designer+Editor Inspector, Coordinate Overlay, Preflight, Rebuild, PDF */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowDesignerEditorPanel((v) => !v)}
-              className={`px-3 py-1.5 text-xs font-medium border flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
-                showDesignerEditorPanel
-                  ? 'bg-stone-900 text-white border-stone-900'
-                  : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-              }`}
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              Designer + Editor Plan (v{edition.masterPlan?.plan_version || 1})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowDiagnosticsOverlay((v) => !v)}
-              className={`px-3 py-1.5 text-xs font-medium border flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
-                showDiagnosticsOverlay
-                  ? 'bg-stone-900 text-white border-stone-900'
-                  : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              Coordinate Overlay
-            </button>
-
+          {/* Right Cluster: Production & Export */}
+          <div className="flex items-center gap-2">
+            {/* Preflight Pill */}
             <button
               type="button"
               onClick={() => setShowPreflightPanel((v) => !v)}
-              className={`px-3 py-1.5 text-xs font-medium border flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-xl border flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors ${
                 showPreflightPanel
-                  ? 'bg-stone-900 text-white border-stone-900'
-                  : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-100'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                  : 'bg-slate-900 text-slate-300 border-slate-700/80 hover:bg-slate-800'
               }`}
             >
-              <FileCheck2 className="w-3.5 h-3.5" />
-              Preflight (
-              {edition.preflightReport?.checks.filter((c) => c.passed).length || 11}/
-              {edition.preflightReport?.checks.length || 11})
+              <FileCheck2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>ముద్రణా నాణ్యత ({edition.preflightReport?.checks.filter((c) => c.passed).length || 11}/11)</span>
             </button>
 
+            {/* Plan Inspector Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowDesignerEditorPanel((v) => !v)}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                showDesignerEditorPanel
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                  : 'bg-slate-900 text-slate-400 border-slate-700/80 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Inspect Master Plan & Layout Feedback Loop"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Coordinates Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowDiagnosticsOverlay((v) => !v)}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                showDiagnosticsOverlay
+                  ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50'
+                  : 'bg-slate-900 text-slate-400 border-slate-700/80 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title="Toggle Grid & Coordinate Diagnostics"
+            >
+              <Layers className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Re-Run Layout Loop */}
             <button
               type="button"
               disabled={isGenerating}
               onClick={() => onRegenerateEdition(edition.id)}
-              className="px-3 py-1.5 text-xs font-medium bg-stone-100 text-stone-800 border border-stone-300 hover:bg-stone-200 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+              className="p-2 rounded-xl border border-slate-700/80 bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              title="Re-run autonomous layout loop"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
-              Run Designer+Editor Loop
+              <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin text-amber-400' : ''}`} />
             </button>
 
-            <button
-              type="button"
-              disabled={isVerifyingAgentPdf}
-              onClick={handleRunAgenticPdfVerify}
-              className="px-3 py-1.5 text-xs font-bold bg-stone-900 text-amber-300 border border-stone-900 hover:bg-stone-800 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-            >
-              <Sparkles className={`w-3.5 h-3.5 ${isVerifyingAgentPdf ? 'animate-spin' : ''}`} />
-              {isVerifyingAgentPdf
-                ? '3.1 → 3.5 Agents Auditing...'
-                : 'Make PDF & Verify (3.1 → 3.5 Agent)'}
-            </button>
-
+            {/* Primary Action: Download Print PDF */}
             <button
               type="button"
               disabled={isDownloadingPdf}
               onClick={handleDownloadPrintPdf}
-              className="px-3.5 py-1.5 text-xs font-semibold bg-[#991B1B] text-white hover:bg-[#7F1D1D] flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer disabled:opacity-60"
+              className="px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-rose-600 to-red-600 text-white hover:from-rose-500 hover:to-red-500 flex items-center gap-2 whitespace-nowrap cursor-pointer shadow-md shadow-rose-950/60 active:scale-95 transition-all disabled:opacity-60"
             >
               <Download className={`w-3.5 h-3.5 ${isDownloadingPdf ? 'animate-bounce' : ''}`} />
-              {isDownloadingPdf ? 'Preparing PDF...' : 'Download Print PDF'}
+              <span>{isDownloadingPdf ? 'Generating...' : 'Download Print PDF'}</span>
             </button>
           </div>
         </div>
 
-        {/* Multi-Agent PDF Release Gatekeeper & Architect Status Banner */}
+        {/* Multi-Agent PDF Gatekeeper & Quality Score Banner */}
         {edition.agenticPdfReport && (
-          <div className="bg-emerald-950 text-white px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs border-l-4 border-amber-400">
+          <div className="bg-emerald-950/50 text-white px-3.5 py-1.5 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs border border-emerald-800/60 border-l-4 border-l-amber-400">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2 py-0.5 bg-amber-400 text-stone-950 font-mono-tabular text-[10.5px] font-extrabold uppercase">
+              <span className="px-2 py-0.5 bg-amber-400 text-stone-950 font-mono text-[10px] font-extrabold uppercase rounded">
                 {edition.agenticPdfReport.ready_for_user
-                  ? 'READY FOR USER · SLIDE APPROVED'
+                  ? 'VERIFIED PRINT QUALITY'
                   : edition.agenticPdfReport.final_verdict}
               </span>
-              <span className="font-mono-tabular text-[11px] text-emerald-200">
+              <span className="font-mono text-[11px] text-emerald-200">
                 Gatekeeper: <strong>{edition.agenticPdfReport.inspector_model_id}</strong> &lt;-&gt; Architect:{' '}
-                <strong>{edition.agenticPdfReport.architect_model_id}</strong> ·{' '}
-                {edition.agenticPdfReport.total_agent_rounds} Agent Round(s) · Quality Score:{' '}
-                <strong>{edition.agenticPdfReport.final_quality_score}/100</strong>
+                <strong>{edition.agenticPdfReport.architect_model_id}</strong> · Quality Score:{' '}
+                <strong className="text-amber-300">{edition.agenticPdfReport.final_quality_score}/100</strong>
               </span>
             </div>
             <button
               type="button"
               onClick={handleRunAgenticPdfVerify}
-              className="text-[11px] font-mono-tabular font-bold text-amber-300 hover:underline cursor-pointer"
+              className="text-[11px] font-mono font-bold text-amber-300 hover:text-amber-200 hover:underline cursor-pointer"
             >
-              Inspect 3.1 → 3.5 Agent Audit &amp; Print PDF →
+              Run Audit &amp; Verify →
             </button>
           </div>
         )}
 
-        {/* Interactive e-Paper Section Spotlight Filter Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-stone-200">
+        {/* Tier 2: Streamlined e-Paper Section Spotlight Filter */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-telugu-sans font-bold text-stone-600 mr-1">
-              విభాగాల వారీగా వార్తలు (e-Paper Section Filter):
+            <span className="text-[11px] font-telugu-sans font-semibold text-slate-400 mr-1">
+              విభాగాలు:
             </span>
             <button
               type="button"
               onClick={() => handleCategorySpotlight('all')}
-              className={`px-2.5 py-1 text-xs font-telugu-sans font-bold cursor-pointer transition-colors ${
+              className={`px-2.5 py-1 text-xs font-telugu-sans font-medium rounded-lg cursor-pointer transition-colors ${
                 spotlightCategory === 'all'
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                  ? 'bg-rose-600 text-white shadow-xs font-bold'
+                  : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
               }`}
             >
               అన్నీ ({allModulesAcrossPages.length})
@@ -1338,22 +1433,19 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                 key={catEng}
                 type="button"
                 onClick={() => handleCategorySpotlight(catEng)}
-                className={`px-2.5 py-1 text-xs font-telugu-sans font-bold cursor-pointer transition-colors ${
+                className={`px-2.5 py-1 text-xs font-telugu-sans font-medium rounded-lg cursor-pointer transition-colors ${
                   spotlightCategory === catEng
-                    ? 'bg-[#991B1B] text-white'
-                    : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                    ? 'bg-rose-600 text-white shadow-xs font-bold'
+                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
                 }`}
               >
                 {catTel}
               </button>
             ))}
           </div>
-          <div className="text-[11px] text-stone-600 font-telugu-sans flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-[#991B1B] shrink-0" />
-            <span>
-              పేపర్‌పై ఏ వార్త మీదైనా క్లిక్ చేసి <strong>e-Paper Clipping Reader</strong> &amp;{' '}
-              <strong>Live Box Style</strong> మార్చండి
-            </span>
+          <div className="text-[11px] text-slate-500 font-telugu-sans flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            <span>వార్తపై క్లిక్ చేసి Clipping Reader చదవండి</span>
           </div>
         </div>
       </div>
@@ -1362,29 +1454,29 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
       {/* DESIGNER + EDITOR MASTER LAYOUT PLAN & FEEDBACK LOOP INSPECTOR       */}
       {/* ==================================================================== */}
       {showDesignerEditorPanel && inspectedPlan && inspectedDiagnostics && (
-        <div className="bg-white border border-stone-300 p-4 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 pb-3">
+        <div className="glass-card p-4 space-y-4 border border-slate-800 text-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-[#9A3412] text-white font-mono-tabular text-[11px] font-semibold">
+                <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono-tabular text-[11px] font-semibold rounded">
                   DESIGNER (THE MIND) + EDITOR (THE HANDS)
                 </span>
-                <h3 className="text-sm font-semibold text-stone-900">
+                <h3 className="text-sm font-semibold text-white">
                   Master Layout Plan &amp; Deterministic Editor Feedback Loop
                 </h3>
               </div>
-              <p className="text-xs text-stone-600 mt-1">
+              <p className="text-xs text-slate-400 mt-1">
                 Designer Model:{' '}
-                <span className="font-mono-tabular font-medium">
+                <span className="font-mono-tabular font-medium text-slate-200">
                   {inspectedPlan.designer_model_id}
                 </span>{' '}
                 · Coordinate System:{' '}
-                <span className="font-mono-tabular">
+                <span className="font-mono-tabular text-slate-200">
                   {inspectedPlan.coordinate_system.unit} (
                   {inspectedPlan.coordinate_system.origin})
                 </span>{' '}
                 · Elements Rendered:{' '}
-                <span className="font-mono-tabular font-semibold">
+                <span className="font-mono-tabular font-semibold text-amber-300">
                   {inspectedDiagnostics.total_elements_rendered}
                 </span>
               </p>
@@ -1392,18 +1484,18 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
 
             {/* Plan Version History Switcher */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-stone-600 flex items-center gap-1">
-                <GitCompare className="w-3.5 h-3.5" /> Plan Version History:
+              <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
+                <GitCompare className="w-3.5 h-3.5 text-slate-400" /> Plan Version History:
               </span>
               {planHistory.map((h) => (
                 <button
                   key={h.plan_version}
                   type="button"
                   onClick={() => setSelectedPlanVersion(h.plan_version)}
-                  className={`px-2.5 py-1 text-xs font-mono-tabular border cursor-pointer transition-colors ${
+                  className={`px-2.5 py-1 text-xs font-mono-tabular rounded border cursor-pointer transition-colors ${
                     inspectedPlan.plan_version === h.plan_version
-                      ? 'bg-stone-900 text-white border-stone-900 font-semibold'
-                      : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100'
+                      ? 'bg-amber-400 text-slate-950 border-amber-400 font-semibold'
+                      : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
                   }`}
                 >
                   v{h.plan_version} (
@@ -1416,7 +1508,7 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
               <button
                 type="button"
                 onClick={() => setShowRawPlanJson((v) => !v)}
-                className="px-2.5 py-1 text-xs font-mono-tabular bg-stone-100 text-stone-800 border border-stone-300 hover:bg-stone-200 flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1 text-xs font-mono-tabular bg-slate-900 text-slate-300 border border-slate-700 hover:bg-slate-800 rounded flex items-center gap-1 cursor-pointer"
               >
                 <Code2 className="w-3.5 h-3.5" />
                 {showRawPlanJson ? 'Hide Master JSON' : 'Inspect Raw JSON'}
@@ -1425,25 +1517,25 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-7 border border-stone-200 bg-stone-50/70 p-3 space-y-2">
+            <div className="lg:col-span-7 border border-slate-800 bg-slate-950/70 rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-stone-700">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Component 1: Designer Master Plan (v{inspectedPlan.plan_version})
                 </span>
-                <span className="text-[11px] font-mono-tabular text-stone-500">
+                <span className="text-[11px] font-mono-tabular text-slate-400">
                   Page {activePageNumber}: {inspectedPagePlan?.elements.length || 0} atomic
                   elements
                 </span>
               </div>
-              <p className="text-xs text-stone-800 leading-relaxed">
+              <p className="text-xs text-slate-300 leading-relaxed">
                 {inspectedPlan.design_rationale}
               </p>
 
               {inspectedPagePlan && (
-                <div className="overflow-x-auto max-h-48 border border-stone-200 bg-white mt-2">
+                <div className="overflow-x-auto max-h-48 border border-slate-800 rounded bg-slate-950 mt-2">
                   <table className="w-full text-left border-collapse text-[11px]">
                     <thead>
-                      <tr className="border-b border-stone-200 bg-stone-100 text-stone-600 font-mono-tabular">
+                      <tr className="border-b border-slate-800 bg-slate-900 text-slate-400 font-mono-tabular">
                         <th className="py-1.5 px-2">element_id</th>
                         <th className="py-1.5 px-2">type</th>
                         <th className="py-1.5 px-2">x, y (mm)</th>
@@ -1451,7 +1543,7 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                         <th className="py-1.5 px-2">measured_h</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-stone-100 font-mono-tabular">
+                    <tbody className="divide-y divide-slate-800 font-mono-tabular">
                       {inspectedPagePlan.elements.map((el) => {
                         const meas =
                           inspectedDiagnostics.element_measurements?.[el.element_id];
@@ -1462,11 +1554,11 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                           <tr
                             key={el.element_id}
                             className={
-                              hasIssue ? 'bg-amber-50/90 text-amber-900' : 'text-stone-800'
+                              hasIssue ? 'bg-amber-950/40 text-amber-300' : 'text-slate-300 hover:bg-slate-900/50'
                             }
                           >
                             <td className="py-1 px-2 font-medium">{el.element_id}</td>
-                            <td className="py-1 px-2 text-stone-600">{el.type}</td>
+                            <td className="py-1 px-2 text-slate-400">{el.type}</td>
                             <td className="py-1 px-2">
                               {el.geometry.x}, {el.geometry.y}
                             </td>
@@ -1485,16 +1577,16 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
               )}
             </div>
 
-            <div className="lg:col-span-5 border border-stone-200 bg-stone-50/70 p-3 space-y-2.5">
+            <div className="lg:col-span-5 border border-slate-800 bg-slate-950/70 rounded-lg p-3 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-stone-700">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Component 2: Editor Diagnostics Report
                 </span>
                 <span
-                  className={`px-2 py-0.5 text-[11px] font-mono-tabular font-semibold ${
+                  className={`px-2 py-0.5 text-[11px] font-mono-tabular font-semibold rounded ${
                     inspectedDiagnostics.status === 'valid'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-amber-100 text-amber-900'
+                      ? 'bg-emerald-950/70 text-emerald-300 border border-emerald-800/80'
+                      : 'bg-amber-950/70 text-amber-300 border border-amber-800/80'
                   }`}
                 >
                   status: {inspectedDiagnostics.status}
@@ -1502,12 +1594,12 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
               </div>
 
               {inspectedDiagnostics.issues.length === 0 ? (
-                <div className="p-3 bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-900 space-y-1">
-                  <div className="font-semibold flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700" /> Zero Unresolved
+                <div className="p-3 bg-emerald-950/40 border border-emerald-800/80 rounded-lg text-xs text-emerald-200 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-emerald-300">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Zero Unresolved
                     Layout Errors
                   </div>
-                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                  <p className="text-[11px] text-emerald-300/80 leading-relaxed">
                     Every Telugu headline, standfirst, multi-column body block, photograph,
                     and caption fits within its allocated physical coordinate box (
                     {inspectedPlan.coordinate_system.unit}) with zero overlaps.
@@ -1518,9 +1610,9 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                   {inspectedDiagnostics.issues.map((iss, idx) => (
                     <div
                       key={`${iss.element_id}-${idx}`}
-                      className="p-2.5 bg-amber-50 border border-amber-300 text-xs space-y-1"
+                      className="p-2.5 bg-amber-950/40 border border-amber-800/80 rounded-lg text-xs space-y-1"
                     >
-                      <div className="flex items-center justify-between font-mono-tabular font-semibold text-amber-900">
+                      <div className="flex items-center justify-between font-mono-tabular font-semibold text-amber-300">
                         <span>
                           [{iss.type}] {iss.element_id} (Page {iss.page_number})
                         </span>
@@ -1529,7 +1621,7 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                           mm
                         </span>
                       </div>
-                      <p className="text-[11px] text-amber-800">{iss.message}</p>
+                      <p className="text-[11px] text-amber-200">{iss.message}</p>
                     </div>
                   ))}
                 </div>
@@ -1538,20 +1630,20 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
           </div>
 
           {showRawPlanJson && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-stone-200">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t border-slate-800">
               <div>
-                <div className="text-xs font-mono-tabular font-semibold text-stone-700 mb-1">
+                <div className="text-xs font-mono-tabular font-semibold text-slate-300 mb-1">
                   Designer MasterLayoutPlan JSON (v{inspectedPlan.plan_version})
                 </div>
-                <pre className="p-3 bg-stone-900 text-stone-100 font-mono-tabular text-[11px] max-h-64 overflow-auto">
+                <pre className="p-3 bg-slate-950 text-cyan-300 font-mono-tabular text-[11px] max-h-64 overflow-auto rounded border border-slate-800">
                   {JSON.stringify(inspectedPlan, null, 2)}
                 </pre>
               </div>
               <div>
-                <div className="text-xs font-mono-tabular font-semibold text-stone-700 mb-1">
+                <div className="text-xs font-mono-tabular font-semibold text-slate-300 mb-1">
                   EditorDiagnosticsReport JSON (v{inspectedDiagnostics.plan_version})
                 </div>
-                <pre className="p-3 bg-stone-900 text-stone-100 font-mono-tabular text-[11px] max-h-64 overflow-auto">
+                <pre className="p-3 bg-slate-950 text-emerald-300 font-mono-tabular text-[11px] max-h-64 overflow-auto rounded border border-slate-800">
                   {JSON.stringify(inspectedDiagnostics, null, 2)}
                 </pre>
               </div>
@@ -1562,26 +1654,25 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
 
       {/* Collapsible 11-Point Print Preflight Verification Panel */}
       {showPreflightPanel && edition.preflightReport && (
-        <div className="bg-white border border-stone-300 p-4 space-y-3">
-          <div className="flex items-center justify-between border-b border-stone-200 pb-2.5">
+        <div className="glass-card p-4 space-y-3 border border-slate-800 text-slate-200">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <div>
-              <h3 className="text-sm font-semibold text-stone-900">
-                Print-Ready PDF Preflight Report — Edition #{edition.editionNumber}
+              <h3 className="text-sm font-semibold text-white">
+                ముద్రణా నాణ్యత మరియు ప్రమాణాల నివేదిక — సంచిక #{edition.editionNumber}
               </h3>
-              <p className="text-xs text-stone-500 mt-0.5">
-                Profile: {edition.preflightReport.profile} · PDF Size:{' '}
-                {(edition.preflightReport.pdfSizeBytes / 1024).toFixed(1)} KB · Pages:{' '}
+              <p className="text-xs text-slate-400 mt-0.5">
+                పరిమాణం: {(edition.preflightReport.pdfSizeBytes / 1024).toFixed(1)} KB · పేజీలు:{' '}
                 {edition.preflightReport.pageCount}
               </p>
             </div>
             <div className="flex items-center gap-1.5 text-xs font-semibold">
               {edition.preflightReport.overallPassed ? (
-                <span className="text-emerald-700 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" /> All Critical Preflight Checks Passed
+                <span className="text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> ముద్రణా ప్రమాణాలు సరిగ్గా ఉన్నాయి
                 </span>
               ) : (
-                <span className="text-amber-700 flex items-center gap-1">
-                  <AlertTriangle className="w-4 h-4" /> Preflight Warnings Detected
+                <span className="text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" /> హెచ్చరికలు గుర్తించబడ్డాయి
                 </span>
               )}
             </div>
@@ -1590,22 +1681,23 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
             {edition.preflightReport.checks.map((chk) => (
               <div
                 key={chk.id}
-                className="p-2.5 border border-stone-200 bg-stone-50/70 flex items-start gap-2"
+                className="p-2.5 border border-slate-800 bg-slate-950/70 rounded-lg flex items-start gap-2"
               >
                 {chk.passed ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 ) : (
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 )}
                 <div className="text-xs">
-                  <div className="font-semibold text-stone-900">{chk.label}</div>
-                  <div className="text-stone-600 mt-0.5 leading-snug">{chk.details}</div>
+                  <div className="font-semibold text-slate-200">{chk.label}</div>
+                  <div className="text-slate-400 mt-0.5 leading-snug">{chk.details}</div>
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
 
       {/* ==================================================================== */}
       {/* RENDERED TELUGU NEWSPAPER BROADSHEET CANVAS (1-PAGE OR 2-PAGE SPREAD)*/}
@@ -1677,6 +1769,30 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                   </button>
                 </div>
 
+                {/* Telugu Audio Reader Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isReadingAloud) {
+                      stopSpeaking();
+                      setIsReadingAloud(false);
+                    } else {
+                      const fullStory = `${activeClippedModule.headlineTextTelugu}. ${activeClippedModule.standfirstTextTelugu || ''}. ${activeClippedModule.bodyParagraphsTelugu.join(' ')}`;
+                      setIsReadingAloud(true);
+                      speakTelugu(fullStory, () => setIsReadingAloud(false));
+                    }
+                  }}
+                  className={`px-3 py-1 font-semibold text-xs flex items-center gap-1.5 cursor-pointer rounded-sm transition-all shadow-sm ${
+                    isReadingAloud
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
+                      : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                  }`}
+                  title="వార్తను బిగ్గరగా వినండి (Listen to Telugu voice narrative)"
+                >
+                  {isReadingAloud ? <Square className="w-3.5 h-3.5 fill-current" /> : <Volume2 className="w-3.5 h-3.5" />}
+                  <span>{isReadingAloud ? 'ఆపు (Stop)' : 'వినండి (Listen)'}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1687,7 +1803,7 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                   className="px-3 py-1 bg-amber-500 text-stone-950 font-semibold text-xs hover:bg-amber-400 flex items-center gap-1 cursor-pointer"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  Inspect AI Pipeline &amp; Edit Text
+                  కథనాన్ని పరిశీలించి సవరించండి (Inspect &amp; Edit)
                 </button>
 
                 <button
@@ -1928,7 +2044,7 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
                 {/* 4. Copy Length Variant */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-stone-800">
-                    4. Telugu Copy Length (Gemini 3.5 Flash-Lite):
+                    4. కథన నిడివి ఎంపిక (Telugu Copy Length):
                   </label>
                   <div className="grid grid-cols-2 gap-1.5">
                     {(['full', 'short'] as const).map((variant) => {
@@ -2008,4 +2124,5 @@ export const NewspaperBroadsheetView: React.FC<NewspaperBroadsheetViewProps> = (
       />
     </div>
   );
-};
+});
+

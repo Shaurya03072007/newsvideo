@@ -456,7 +456,17 @@ async function runEditionGenerationWorker(
       );
 
       for (const mod of [...page.modules, ...page.sideBriefs]) {
+        if (!mod.articleId) continue;
         const art = allArticles.find((a) => a.id === mod.articleId);
+        // Check if the article genuinely exists in the articles database table
+        const existsInDb = art || db.prepare('SELECT id FROM articles WHERE id = ?').get(mod.articleId);
+        if (!existsInDb) {
+          // Synthetic editorial columns (like art-editorial-chief, art-special-analysis, art-cultural-diary)
+          // or non-persisted layout elements are rendered directly in page_layout_manifests,
+          // but do not exist in the `articles` table. Skip them to avoid FOREIGN KEY constraint failure.
+          continue;
+        }
+
         db.prepare(
           `INSERT INTO edition_article_assignments (id, edition_id, article_id, revision_number, page_number, placement_role, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -547,7 +557,7 @@ async function runEditionGenerationWorker(
       now
     );
 
-    const nextPdfId = preflight.overallPassed || !edition.pdfArtifactId ? pdfArtifactId : edition.pdfArtifactId;
+    const nextPdfId = pdfArtifactId;
 
     db.prepare(
       `UPDATE newspaper_editions

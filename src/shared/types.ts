@@ -10,6 +10,32 @@ export interface User {
   bureau: string;
   active: boolean;
   createdAt: string;
+  email?: string;
+  avatarUrl?: string;
+  googleId?: string;
+  updatedAt?: string;
+}
+
+export interface GoogleAuthPayload {
+  credential?: string;
+  sub?: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+  displayNameTelugu?: string;
+  role?: UserRole;
+  district?: string;
+  bureau?: string;
+}
+
+export interface UserProfileUpdate {
+  displayName?: string;
+  displayNameTelugu?: string;
+  role?: UserRole;
+  district?: string;
+  bureau?: string;
+  avatarUrl?: string;
+  email?: string;
 }
 
 export type ArticleStatus =

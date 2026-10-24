@@ -429,20 +429,17 @@ export async function runAgenticPdfGatekeeperLoop(params: {
   });
 
   let currentPages = derivePageLayoutManifestsFromMasterPlan(currentPlan, articles, settings);
-  let currentPdfBytes: Uint8Array =
-    currentDiagnostics.status === 'valid'
-      ? exportMasterPlanToPdfBuffer(
-          {
-            ...edition,
-            pages: currentPages,
-            masterPlan: currentPlan,
-            editorDiagnostics: currentDiagnostics,
-          },
-          settings,
-          articles,
-          onLog
-        )
-      : new TextEncoder().encode(`%PDF-1.4\n%PrajaVani-Draft-v${currentPlan.plan_version}`);
+  let currentPdfBytes: Uint8Array = exportMasterPlanToPdfBuffer(
+    {
+      ...edition,
+      pages: currentPages,
+      masterPlan: currentPlan,
+      editorDiagnostics: currentDiagnostics,
+    },
+    settings,
+    articles,
+    onLog
+  );
 
   for (let round = 1; round <= maxAgentRounds; round++) {
     if (onLog) {

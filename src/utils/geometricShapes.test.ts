@@ -36,29 +36,29 @@ test('Geometric Shapes: Catalog defines 9 non-rectangular and broadsheet shapes 
 test('Geometric Shapes: Designer selects creative non-square contours based on article archetype and page placement', () => {
   const cultureArt: Partial<Article> = {
     id: 'art-kuchipudi-utsav',
-    category: 'Culture and festivals',
-    editorialWeight: 6,
-    hasPhotograph: true,
+    assignedCategory: 'Culture and festivals',
+    priorityScore: 85,
+    primaryAssetId: 'asset-culture-photo',
   };
-  const cultureShape = selectDesignerGeometricShapeForArticle(cultureArt as Article, 1, 3);
+  const cultureShape = selectDesignerGeometricShapeForArticle(cultureArt as Article, 1, 3, false);
   assert.equal(cultureShape.shape_type, 'rhombus_diamond', 'Culture article receives diamond or tomb arch');
 
   const agriArt: Partial<Article> = {
     id: 'art-krishna-delta',
-    category: 'Agriculture',
-    editorialWeight: 10,
-    hasPhotograph: true,
+    assignedCategory: 'Agriculture',
+    priorityScore: 98,
+    primaryAssetId: 'asset-agri-photo',
   };
-  const leadShape = selectDesignerGeometricShapeForArticle(agriArt as Article, 1, 0);
+  const leadShape = selectDesignerGeometricShapeForArticle(agriArt as Article, 1, 0, true);
   assert.equal(leadShape.shape_type, 'semi_circle_arch', 'Lead story receives majestic semi_circle_arch');
 
   const eduArt: Partial<Article> = {
     id: 'art-vizag-education',
-    category: 'Education',
-    editorialWeight: 7,
-    hasPhotograph: true,
+    assignedCategory: 'Education',
+    priorityScore: 80,
+    primaryAssetId: 'asset-edu-photo',
   };
-  const eduShape = selectDesignerGeometricShapeForArticle(eduArt as Article, 2, 1);
+  const eduShape = selectDesignerGeometricShapeForArticle(eduArt as Article, 2, 1, false);
   assert.equal(eduShape.shape_type, 'circle', 'Education feature receives circle medallion');
 });
 

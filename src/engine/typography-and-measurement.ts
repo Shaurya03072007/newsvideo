@@ -1,5 +1,5 @@
 import type { Article, PlanElement, PublicationSettings } from '../shared/types.ts';
-import { countTeluguSyllables } from '../utils/editorialLogic.ts';
+import { countTeluguSyllables, containsTeluguUnicode } from '../utils/editorialLogic.ts';
 
 export interface ConfigurablePageGridGeometry {
   pageWidthMm: number;
@@ -150,15 +150,27 @@ export function resolveElementTeluguText(
   }
 
   const primaryHeadline =
-    article.primaryHeadlineTelugu || article.originalHeadline || 'ముఖ్య వార్త';
-  const compactHeadline = article.compactHeadlineTelugu || primaryHeadline;
-  const fullParas =
+    (article.primaryHeadlineTelugu && containsTeluguUnicode(article.primaryHeadlineTelugu))
+      ? article.primaryHeadlineTelugu
+      : (article.originalHeadline && containsTeluguUnicode(article.originalHeadline))
+      ? article.originalHeadline
+      : `${article.location || 'తాజా వార్త'}: సమగ్ర వార్తా కథనం`;
+  const compactHeadline =
+    (article.compactHeadlineTelugu && containsTeluguUnicode(article.compactHeadlineTelugu))
+      ? article.compactHeadlineTelugu
+      : primaryHeadline;
+  const rawFull =
     article.aiBodyParagraphsFull && article.aiBodyParagraphsFull.length > 0
       ? article.aiBodyParagraphsFull
       : article.originalBodyTelugu.split(/\n+/).filter(Boolean);
+  const fullParas = rawFull.map((p) =>
+    containsTeluguUnicode(p) ? p : `${article.location}: విలేకరి తాజా వార్తా నివేదిక - సంపాదక పరిశీలన`
+  );
   const shortParas =
     article.aiBodyParagraphsShort && article.aiBodyParagraphsShort.length > 0
-      ? article.aiBodyParagraphsShort
+      ? article.aiBodyParagraphsShort.map((p) =>
+          containsTeluguUnicode(p) ? p : `${article.location}: సంక్షిప్త వార్తా సమాచారం`
+        )
       : fullParas.slice(0, Math.max(1, Math.ceil(fullParas.length / 2)));
 
   if (element.type === 'section_kicker' || ref.endsWith('.kicker')) {

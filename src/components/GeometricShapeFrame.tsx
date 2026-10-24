@@ -17,112 +17,46 @@ interface ShapedPhotoOrMedallionProps {
 
 export const ShapedPhotoOrMedallion: React.FC<ShapedPhotoOrMedallionProps> = ({
   module,
-  shapeType,
-  accentColorHex,
   mode,
   floatDirection = 'left',
 }) => {
-  const spec: GeometricShapeSpec =
-    GEOMETRIC_SHAPE_CATALOG[shapeType] || GEOMETRIC_SHAPE_CATALOG.rectangle;
-  const isNonRect = shapeType !== 'rectangle';
-
-  if (mode === 'floated_text_wrap' && isNonRect) {
-    const floatSizePx =
-      shapeType === 'circle' || shapeType === 'rhombus_diamond' || shapeType === 'star_burst'
-        ? 176
-        : shapeType === 'pentagon_shield' || shapeType === 'hexagon_gem'
-        ? 184
-        : 188;
-
+  // Editorial photographs in professional newspapers are clean, unclipped rectangular frames.
+  if (mode === 'floated_text_wrap') {
     return (
       <div
         style={{
           float: floatDirection,
-          width: `${floatSizePx}px`,
-          height: `${floatSizePx}px`,
-          shapeOutside: spec.shape_outside_css,
-          WebkitShapeOutside: spec.shape_outside_css,
-          shapeMargin: '12px',
-          marginRight: floatDirection === 'left' ? '16px' : '0px',
-          marginLeft: floatDirection === 'right' ? '16px' : '0px',
+          width: '240px',
+          marginRight: floatDirection === 'left' ? '14px' : '0px',
+          marginLeft: floatDirection === 'right' ? '14px' : '0px',
           marginBottom: '10px',
         }}
-        className="relative select-none shrink-0 group/shape"
+        className="relative select-none shrink-0 group/shape not-prose"
       >
-        {/* Clipped Geometric Image & Content Area */}
-        <div
-          style={{
-            clipPath: spec.clip_path_css,
-            WebkitClipPath: spec.clip_path_css,
-          }}
-          className="w-full h-full relative overflow-hidden bg-stone-900 shadow-md"
-        >
+        <div className="w-full relative overflow-hidden bg-stone-900 border border-stone-300 shadow-xs">
           <EditorialPhotoIllustration
             articleId={module.articleId}
             category={module.sectionCategory}
             imageUrl={module.photographUrl}
             altText={module.photographCaptionTelugu || module.headlineTextTelugu}
             locationTelugu={module.locationDatelineTelugu}
-            heightClass="h-full"
+            heightClass="h-36"
           />
-
-          {/* Bottom Gradient & Telugu Callout Inside the Geometric Shape */}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/65 to-transparent pt-6 pb-2.5 px-3 text-center">
-            <div className="font-telugu-sans text-[10px] font-bold text-amber-300 leading-tight truncate">
-              {module.geometricShape?.badge_title_telugu || module.sectionLabelTelugu}
-            </div>
-            <div className="font-telugu-sans text-[11px] font-extrabold text-white leading-tight truncate">
-              {module.geometricShape?.badge_value_telugu || module.locationDatelineTelugu}
-            </div>
-          </div>
         </div>
-
-        {/* Crisp Vector SVG Polygon / Circle Contour Ring */}
-        {spec.svg_border_path && (
-          <svg
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            className="
-              pointer-events-none absolute inset-0 w-full h-full z-10
-            "
-          >
-            <path
-              d={spec.svg_border_path}
-              fill="none"
-              stroke={accentColorHex}
-              strokeWidth="3.2"
-              vectorEffect="non-scaling-stroke"
-            />
-            <path
-              d={spec.svg_border_path}
-              fill="none"
-              stroke="#FDE68A"
-              strokeWidth="1"
-              strokeDasharray="3 2"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
+        {module.photographCaptionTelugu && (
+          <div className="text-[10.5px] font-telugu-sans text-stone-600 leading-tight pt-1 px-0.5">
+            <strong className="text-stone-900 mr-0.5">చిత్రం:</strong>
+            {module.photographCaptionTelugu}
+          </div>
         )}
       </div>
     );
   }
 
-  // Banner / Feature Frame Mode (supports Tomb Arch, Semi-Circle Dome, Pentagon, Circle, etc.)
+  // Banner / Feature Frame Mode (Clean Rectangular Framing)
   return (
     <div className="relative">
-      <div
-        style={
-          isNonRect
-            ? {
-                clipPath: spec.clip_path_css,
-                WebkitClipPath: spec.clip_path_css,
-              }
-            : undefined
-        }
-        className={`relative overflow-hidden bg-stone-900 ${
-          isNonRect ? '' : 'border border-stone-400'
-        }`}
-      >
+      <div className="relative overflow-hidden bg-stone-900 border border-stone-300 shadow-xs">
         <EditorialPhotoIllustration
           articleId={module.articleId}
           category={module.sectionCategory}
@@ -131,33 +65,7 @@ export const ShapedPhotoOrMedallion: React.FC<ShapedPhotoOrMedallionProps> = ({
           locationTelugu={module.locationDatelineTelugu}
           heightClass={module.isLeadStory ? 'h-52' : 'h-44'}
         />
-
-        {spec.svg_border_path && isNonRect && (
-          <svg
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            className="pointer-events-none absolute inset-0 w-full h-full z-10"
-          >
-            <path
-              d={spec.svg_border_path}
-              fill="none"
-              stroke={accentColorHex}
-              strokeWidth="3"
-              vectorEffect="non-scaling-stroke"
-            />
-          </svg>
-        )}
       </div>
-
-      {/* Geometric Shape Badge Pill */}
-      {isNonRect && (
-        <div
-          style={{ backgroundColor: accentColorHex }}
-          className="inline-flex items-center gap-1.5 text-white font-telugu-sans text-[10px] font-bold px-2 py-0.5 mt-1"
-        >
-          <span>ఆకృతి: {spec.label_telugu}</span>
-        </div>
-      )}
     </div>
   );
 };
