@@ -36,6 +36,7 @@ The newspaper layout and rendering system is built around two primary components
 
 - **`src/engine/layout-plan-schema.ts`**:
   - Formal JSON schema validators for `MasterLayoutPlan` and `EditorDiagnosticsReport`.
+  - Formal JSON schema validators for `MasterLayoutPlan` and `EditorDiagnosticsReport`.
 
 - **`src/engine/typography-and-measurement.ts`**:
   - Calibrated OpenType Telugu akshara (orthographic syllable cluster) measurement engine and `content_ref` resolver.
